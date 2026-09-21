@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "373464803747",
+    "project_id": "empyrean-app-224013",
+    "storage_bucket": "empyrean-app-224013.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:373464803747:android:2a623f2baf56eb9f469216",
+        "android_client_info": {
+          "package_name": "com.example.tasker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAtyTOHXEGJH4tAi49v0YIvbYid6owTIIo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

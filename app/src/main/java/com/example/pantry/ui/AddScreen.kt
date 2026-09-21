@@ -1,0 +1,446 @@
+package com.example.pantry.ui
+
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import org.json.JSONObject
+import java.io.IOException
+import java.util.UUID
+
+@Composable
+fun AddScreen(
+    onAddItem: (PantryItem) -> Unit = {}
+) {
+    var itemName by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("Dry Goods") }
+    var priceText by remember { mutableStateOf("") }
+    var quantity by remember { mutableIntStateOf(1) }
+    var lowStockThreshold by remember { mutableIntStateOf(1) }
+    var isSaved by remember { mutableStateOf(false) }
+    var isScanning by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val categories = listOf("Dry Goods", "Beverages", "Pet Care", "Household")
+
+    fun startBarcodeScan() {
+        try {
+            val options = GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(
+                    Barcode.FORMAT_UPC_A,
+                    Barcode.FORMAT_UPC_E,
+                    Barcode.FORMAT_EAN_13,
+                    Barcode.FORMAT_EAN_8,
+                    Barcode.FORMAT_ALL_FORMATS
+                )
+                .enableAutoZoom()
+                .build()
+
+            val scanner = GmsBarcodeScanning.getClient(context, options)
+            scanner.startScan()
+                .addOnSuccessListener { barcode ->
+                    val rawValue = barcode.rawValue
+                    if (!rawValue.isNullOrBlank()) {
+                        isScanning = true
+                        Toast.makeText(context, "Scanned: $rawValue. Looking up product...", Toast.LENGTH_SHORT).show()
+                        
+                        lookupBarcodeProduct(
+                            barcode = rawValue,
+                            onSuccess = { name, category ->
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    isScanning = false
+                                    itemName = name
+                                    selectedCategory = category
+                                    if (name.isNotBlank()) {
+                                        Toast.makeText(context, "Product found: $name", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Barcode scanned. Enter item name.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            onError = { _ ->
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    isScanning = false
+                                    Toast.makeText(context, "Scanned barcode: $rawValue", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
+                    }
+                }
+                .addOnCanceledListener {
+                    isScanning = false
+                }
+                .addOnFailureListener { e ->
+                    isScanning = false
+                    Toast.makeText(context, "Scanner error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+        } catch (e: Exception) {
+            isScanning = false
+            Toast.makeText(context, "Scanner initialization failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .verticalScroll(rememberScrollState())
+            .padding(top = 64.dp, bottom = 120.dp, start = 20.dp, end = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(28.dp)
+    ) {
+        Text(
+            text = "Add Item",
+            color = Color.White,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.Bold
+        )
+
+        // Walmart Barcode Scanner Button
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(enabled = !isScanning) { startBarcodeScan() },
+            color = Color(0xFF007AFF)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (isScanning) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Looking up scanned product...", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                } else {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan Barcode", tint = Color.White, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Scan Walmart / Grocery Barcode", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Item Name Input
+        OutlinedTextField(
+            value = itemName,
+            onValueChange = { 
+                itemName = it
+                isSaved = false
+            },
+            placeholder = { Text("Item Name", color = Color.Gray) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color(0xFF1C1C1E),
+                unfocusedContainerColor = Color(0xFF1C1C1E),
+                focusedBorderColor = Color(0xFF007AFF),
+                unfocusedBorderColor = Color.Transparent,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = Color(0xFF007AFF)
+            )
+        )
+
+        // Item Unit Price Input
+        OutlinedTextField(
+            value = priceText,
+            onValueChange = { priceText = it },
+            placeholder = { Text("Unit Price ($ e.g. 6.98)", color = Color.Gray) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color(0xFF1C1C1E),
+                unfocusedContainerColor = Color(0xFF1C1C1E),
+                focusedBorderColor = Color(0xFF007AFF),
+                unfocusedBorderColor = Color.Transparent,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = Color(0xFF007AFF)
+            )
+        )
+
+        // Category Selector
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Category", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                categories.forEach { category ->
+                    val isSelected = selectedCategory == category
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSelected) Color(0xFF007AFF) else Color(0xFF1C1C1E))
+                            .clickable { selectedCategory = category },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = category,
+                            color = if (isSelected) Color.White else Color.Gray,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+
+        // Quantity Control Stepper
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF1C1C1E))
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Quantity", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                IconButton(
+                    onClick = { if (quantity > 1) quantity-- },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(Color(0xFF2C2C2E), RoundedCornerShape(10.dp))
+                ) {
+                    Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = Color.White)
+                }
+                Text(
+                    text = quantity.toString(), 
+                    color = Color.White, 
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(
+                    onClick = { quantity++ },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(Color(0xFF007AFF), RoundedCornerShape(10.dp))
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Increase", tint = Color.White)
+                }
+            }
+        }
+
+        // Low Stock Threshold Stepper
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFF1C1C1E))
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text("Low Stock Threshold", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text("Triggers restock alert when quantity ≤ this number", color = Color.Gray, fontSize = 11.sp)
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                IconButton(
+                    onClick = { if (lowStockThreshold > 0) lowStockThreshold-- },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(Color(0xFF2C2C2E), RoundedCornerShape(10.dp))
+                ) {
+                    Icon(Icons.Default.Remove, contentDescription = "Decrease Threshold", tint = Color.White)
+                }
+                Text(
+                    text = lowStockThreshold.toString(), 
+                    color = Color(0xFFFF3B30), 
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(
+                    onClick = { lowStockThreshold++ },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(Color(0xFF007AFF), RoundedCornerShape(10.dp))
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Increase Threshold", tint = Color.White)
+                }
+            }
+        }
+
+        if (isSaved) {
+            Text(
+                text = "Item added to inventory!",
+                color = Color(0xFF34C759),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Save Button
+        Button(
+            onClick = {
+                if (itemName.isNotBlank()) {
+                    val parsedPrice = priceText.toDoubleOrNull() ?: 0.0
+                    val newItem = PantryItem(
+                        id = UUID.randomUUID().toString(),
+                        name = itemName.trim(),
+                        category = selectedCategory,
+                        quantity = quantity.toDouble(),
+                        unit = "Units",
+                        lowStockThreshold = lowStockThreshold.toDouble(),
+                        price = parsedPrice
+                    )
+                    onAddItem(newItem)
+                    itemName = ""
+                    priceText = ""
+                    quantity = 1
+                    lowStockThreshold = 1
+                    isSaved = true
+                }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+        ) {
+            Text("Save to Pantry", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+private fun lookupBarcodeProduct(
+    barcode: String,
+    onSuccess: (name: String, category: String) -> Unit,
+    onError: (String) -> Unit
+) {
+    val cleanUpc = barcode.filter { it.isDigit() }
+    val client = OkHttpClient()
+
+    // Stage 1: Query UPC Item DB API (Designed for US Walmart/Groceries)
+    val upcDbUrl = "https://api.upcitemdb.com/prod/trial/lookup?upc=$cleanUpc"
+    val request1 = Request.Builder()
+        .url(upcDbUrl)
+        .header("User-Agent", "TaskerPantryManager/1.0")
+        .build()
+
+    client.newCall(request1).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            tryOpenFoodFacts(client, cleanUpc, onSuccess, onError)
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            val bodyStr = response.body?.string() ?: ""
+            try {
+                val json = JSONObject(bodyStr)
+                val items = json.optJSONArray("items")
+                if (items != null && items.length() > 0) {
+                    val firstItem = items.getJSONObject(0)
+                    val title = firstItem.optString("title")
+                    val categoriesStr = firstItem.optString("category").lowercase()
+                    if (title.isNotBlank()) {
+                        val inferredCategory = when {
+                            categoriesStr.contains("beverage") || categoriesStr.contains("drink") || categoriesStr.contains("juice") || categoriesStr.contains("milk") || categoriesStr.contains("soda") || categoriesStr.contains("water") -> "Beverages"
+                            categoriesStr.contains("pet") || categoriesStr.contains("dog") || categoriesStr.contains("cat") -> "Pet Care"
+                            categoriesStr.contains("household") || categoriesStr.contains("cleaning") || categoriesStr.contains("paper") -> "Household"
+                            else -> "Dry Goods"
+                        }
+                        onSuccess(title, inferredCategory)
+                        return
+                    }
+                }
+            } catch (_: Exception) {}
+            tryOpenFoodFacts(client, cleanUpc, onSuccess, onError)
+        }
+    })
+}
+
+private fun tryOpenFoodFacts(
+    client: OkHttpClient,
+    upc: String,
+    onSuccess: (name: String, category: String) -> Unit,
+    onError: (String) -> Unit
+) {
+    val offUrl = "https://world.openfoodfacts.org/api/v2/product/$upc.json"
+    val request = Request.Builder()
+        .url(offUrl)
+        .header("User-Agent", "TaskerPantryManager/1.0")
+        .build()
+
+    client.newCall(request).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            onSuccess("", "Dry Goods")
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            val bodyStr = response.body?.string() ?: ""
+            try {
+                val json = JSONObject(bodyStr)
+                val status = json.optInt("status", 0)
+                if (status == 1) {
+                    val product = json.optJSONObject("product")
+                    val name = product?.optString("product_name")?.ifBlank { null }
+                        ?: product?.optString("product_name_en")?.ifBlank { null }
+                        ?: product?.optString("brands")?.ifBlank { null }
+
+                    val categoriesStr = product?.optString("categories")?.lowercase() ?: ""
+                    val inferredCategory = when {
+                        categoriesStr.contains("beverage") || categoriesStr.contains("drink") || categoriesStr.contains("juice") || categoriesStr.contains("milk") || categoriesStr.contains("soda") || categoriesStr.contains("water") -> "Beverages"
+                        categoriesStr.contains("pet") || categoriesStr.contains("dog") || categoriesStr.contains("cat") -> "Pet Care"
+                        categoriesStr.contains("household") || categoriesStr.contains("cleaning") || categoriesStr.contains("paper") -> "Household"
+                        else -> "Dry Goods"
+                    }
+
+                    if (!name.isNullOrBlank()) {
+                        onSuccess(name, inferredCategory)
+                        return
+                    }
+                }
+            } catch (_: Exception) {}
+
+            onSuccess("", "Dry Goods")
+        }
+    })
+}
