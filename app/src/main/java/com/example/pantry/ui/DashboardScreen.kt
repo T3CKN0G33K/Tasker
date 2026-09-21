@@ -45,6 +45,8 @@ import com.google.firebase.firestore.firestore
 fun DashboardScreen(
     modifier: Modifier = Modifier,
     currentUser: UserProfile = UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
+    isDarkMode: Boolean = true,
+    onToggleDarkMode: (Boolean) -> Unit = {},
     onSignOut: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -52,7 +54,7 @@ fun DashboardScreen(
     var pantryItems by remember { mutableStateOf<List<PantryItem>>(emptyList()) }
     var budgetTransactions by remember { mutableStateOf<List<BudgetTransaction>>(emptyList()) }
     var monthlyBills by remember { mutableStateOf<List<BillItem>>(emptyList()) }
-    var monthlyBudgetLimit by remember { mutableDoubleStateOf(1250.0) }
+    var monthlyBudgetLimit by remember { mutableDoubleStateOf(1804.66) }
 
     val db = Firebase.firestore
 
@@ -89,7 +91,7 @@ fun DashboardScreen(
             db.collection("households").document(householdId)
                 .addSnapshotListener { doc, _ ->
                     if (doc != null && doc.exists()) {
-                        monthlyBudgetLimit = doc.getDouble("budgetLimit") ?: 1250.0
+                        monthlyBudgetLimit = doc.getDouble("budgetLimit") ?: 1804.66
                     }
                 }
 
@@ -129,11 +131,13 @@ fun DashboardScreen(
         }
     }
 
+    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
+
     // 1. Root Container (Scaffoldless Fullscreen Box)
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(screenBg)
     ) {
         // LAYER 1: Fullscreen Screen Content (Extends all the way behind floating liquid glass taskbar)
         AnimatedContent(
@@ -152,6 +156,7 @@ fun DashboardScreen(
                 when (targetTab) {
                     0 -> PantryScreen(
                         items = pantryItems,
+                        isDarkMode = isDarkMode,
                         onItemUpdate = { updatedItem ->
                             currentUser.householdId?.let { hid ->
                                 val itemMap = hashMapOf(
@@ -176,6 +181,7 @@ fun DashboardScreen(
                         }
                     )
                     1 -> AddScreen(
+                        isDarkMode = isDarkMode,
                         onAddItem = { newItem ->
                             if (currentUser.householdId == null) {
                                 Toast.makeText(context, "Error: No Household ID found on profile.", Toast.LENGTH_LONG).show()
@@ -206,6 +212,7 @@ fun DashboardScreen(
                     )
                     2 -> BudgetScreen(
                         currentUser = currentUser,
+                        isDarkMode = isDarkMode,
                         transactions = budgetTransactions,
                         bills = monthlyBills,
                         monthlyLimit = monthlyBudgetLimit,
@@ -213,8 +220,13 @@ fun DashboardScreen(
                         onUpdateBills = { updatedBills -> monthlyBills = updatedBills },
                         onUpdateMonthlyLimit = { updatedLimit -> monthlyBudgetLimit = updatedLimit }
                     )
-                    3 -> ShiftsScreen(currentUser = currentUser)
-                    4 -> SettingsScreen(currentUser = currentUser, onSignOut = onSignOut)
+                    3 -> ShiftsScreen(currentUser = currentUser, isDarkMode = isDarkMode)
+                    4 -> SettingsScreen(
+                        currentUser = currentUser,
+                        isDarkMode = isDarkMode,
+                        onToggleDarkMode = onToggleDarkMode,
+                        onSignOut = onSignOut
+                    )
                 }
             }
         }
@@ -277,10 +289,11 @@ fun DashboardScreen(
                     .drawBehind {
                         drawRoundRect(
                             brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFF2C2C2E).copy(alpha = 0.9f),
-                                    Color(0xFF1C1C1E).copy(alpha = 0.98f)
-                                )
+                                colors = if (isDarkMode) {
+                                    listOf(Color(0xFF2C2C2E).copy(alpha = 0.9f), Color(0xFF1C1C1E).copy(alpha = 0.98f))
+                                } else {
+                                    listOf(Color(0xFFE5E5EA).copy(alpha = 0.9f), Color(0xFFF2F2F7).copy(alpha = 0.98f))
+                                }
                             ),
                             cornerRadius = CornerRadius(size.height / 2f)
                         )
@@ -288,7 +301,11 @@ fun DashboardScreen(
                     .border(
                         width = 1.dp,
                         brush = Brush.verticalGradient(
-                            colors = listOf(Color.White.copy(alpha = 0.3f), Color.White.copy(alpha = 0.05f))
+                            colors = if (isDarkMode) {
+                                listOf(Color.White.copy(alpha = 0.3f), Color.White.copy(alpha = 0.05f))
+                            } else {
+                                listOf(Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.05f))
+                            }
                         ),
                         shape = RoundedCornerShape(50)
                     )
@@ -343,13 +360,13 @@ fun DashboardScreen(
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = label,
-                                    tint = Color(0xFF8E8E93),
+                                    tint = if (isDarkMode) Color(0xFF8E8E93) else Color(0xFF6C6C70),
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = label,
-                                    color = Color(0xFF8E8E93),
+                                    color = if (isDarkMode) Color(0xFF8E8E93) else Color(0xFF6C6C70),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium
                                 )
@@ -369,15 +386,16 @@ fun DashboardScreen(
                             .clip(RoundedCornerShape(50))
                             .background(
                                 brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color(0xFF636366).copy(alpha = 0.95f),
-                                        Color(0xFF48484A).copy(alpha = 0.95f)
-                                    )
+                                    colors = if (isDarkMode) {
+                                        listOf(Color(0xFF636366).copy(alpha = 0.95f), Color(0xFF48484A).copy(alpha = 0.95f))
+                                    } else {
+                                        listOf(Color(0xFFFFFFFF).copy(alpha = 0.98f), Color(0xFFF2F2F7).copy(alpha = 0.98f))
+                                    }
                                 )
                             )
                             .border(
                                 width = 0.8.dp,
-                                color = Color.White.copy(alpha = 0.35f),
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f),
                                 shape = RoundedCornerShape(50)
                             ),
                         contentAlignment = Alignment.Center
@@ -396,7 +414,7 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = activeTabInfo.second,
-                                color = Color.White,
+                                color = if (isDarkMode) Color.White else Color.Black,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold
                             )

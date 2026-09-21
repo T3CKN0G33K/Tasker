@@ -1,5 +1,6 @@
 package com.example.pantry.ui
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -18,11 +19,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.firestore
@@ -32,13 +35,27 @@ enum class AppState { LOADING, AUTH, ONBOARDING, DASHBOARD }
 
 @Composable
 fun AppRoot() {
+    val context = LocalContext.current
     var currentAppState by remember { mutableStateOf(AppState.LOADING) }
     var activeUser by remember { mutableStateOf<UserProfile?>(null) }
     var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
+    var isDarkMode by remember { mutableStateOf(UserPreferences.isDarkMode(context)) }
 
-    val context = LocalContext.current
     val db = Firebase.firestore
     val auth = Firebase.auth
+
+    // Dynamic System Status Bar Appearance (Prevents washed out status bar text in Light Mode!)
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as? Activity)?.window
+            if (window != null) {
+                val controller = WindowCompat.getInsetsController(window, view)
+                controller.isAppearanceLightStatusBars = !isDarkMode
+                controller.isAppearanceLightNavigationBars = !isDarkMode
+            }
+        }
+    }
 
     // Auto-check for OTA app updates on startup
     LaunchedEffect(Unit) {
@@ -115,7 +132,9 @@ fun AppRoot() {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    val rootBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
+
+    Box(modifier = Modifier.fillMaxSize().background(rootBg)) {
         AnimatedContent(
             targetState = currentAppState,
             transitionSpec = {
@@ -146,6 +165,11 @@ fun AppRoot() {
                 )
                 AppState.DASHBOARD -> DashboardScreen(
                     currentUser = activeUser ?: UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = { newDark ->
+                        isDarkMode = newDark
+                        UserPreferences.saveDarkMode(context, newDark)
+                    },
                     onSignOut = {
                         auth.signOut()
                         UserPreferences.clear(context)

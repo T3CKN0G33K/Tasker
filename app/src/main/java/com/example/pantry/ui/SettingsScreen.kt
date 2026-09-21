@@ -52,12 +52,13 @@ fun SettingsScreen(
         role = Role.OWNER, 
         householdId = "house_abc"
     ),
+    isDarkMode: Boolean = true,
+    onToggleDarkMode: (Boolean) -> Unit = {},
     onProfileUpdated: (UserProfile) -> Unit = {},
     onSignOut: () -> Unit = {}
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
-    var darkMode by remember { mutableStateOf(true) }
     var notifications by remember { mutableStateOf(true) }
     var showManageDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -70,42 +71,47 @@ fun SettingsScreen(
                            currentUser.role == Role.ADMIN || 
                            currentUser.canManageHousehold
 
+    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
+    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
+    val textMain = if (isDarkMode) Color.White else Color.Black
+    val textSub = if (isDarkMode) Color.Gray else Color(0xFF6C6C70)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(screenBg)
             .verticalScroll(rememberScrollState())
             .padding(top = 64.dp, bottom = 120.dp, start = 20.dp, end = 20.dp),
         verticalArrangement = Arrangement.spacedBy(28.dp)
     ) {
-        Text("Settings", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+        Text("Settings", color = textMain, fontSize = 34.sp, fontWeight = FontWeight.Bold)
 
         // Dynamic Profile Section (Clickable to Edit Profile)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF1C1C1E))
+                .background(cardBg)
                 .clickable { showEditProfileDialog = true }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier.size(60.dp).clip(CircleShape).background(Color(0xFF2C2C2E)),
+                modifier = Modifier.size(60.dp).clip(CircleShape).background(if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = currentUser.name.take(1).uppercase(), 
-                    color = Color.White, 
+                    color = textMain, 
                     fontSize = 24.sp, 
                     fontWeight = FontWeight.Bold
                 )
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(currentUser.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Text(currentUser.name, color = textMain, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(currentUser.email, color = Color.Gray, fontSize = 13.sp)
+                Text(currentUser.email, color = textSub, fontSize = 13.sp)
                 Spacer(modifier = Modifier.height(2.dp))
                 Text("Tap to edit profile & security", color = Color(0xFF007AFF), fontSize = 11.sp)
             }
@@ -123,7 +129,7 @@ fun SettingsScreen(
         // Household Group
         if (currentUser.householdId != null) {
             Column(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C1C1E))
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cardBg)
             ) {
                 // Permission Check: Show Manage Household if OWNER, ADMIN, or granted permission
                 if (canManageHousehold) {
@@ -131,6 +137,7 @@ fun SettingsScreen(
                         icon = Icons.Default.Home, 
                         iconBg = Color(0xFFFF9500), 
                         text = "Manage Household",
+                        textColor = textMain,
                         onClick = { showManageDialog = true }
                     )
                 }
@@ -138,30 +145,33 @@ fun SettingsScreen(
                 // Permission Check: Only Owners and Admins can view Feedback Feed and Share Link
                 if (currentUser.role == Role.OWNER || currentUser.role == Role.ADMIN) {
                     if (canManageHousehold) {
-                        HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+                        HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
                     }
                     SettingsActionRow(
                         icon = Icons.Default.RateReview, 
                         iconBg = Color(0xFF5856D6), 
                         text = "Household Feedback Feed",
+                        textColor = textMain,
                         onClick = { showFeedbackFeedDialog = true }
                     )
-                    HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+                    HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
                     SettingsActionRow(
                         icon = Icons.Default.PersonAdd, 
                         iconBg = Color(0xFF007AFF), 
                         text = "Share Invite Link",
+                        textColor = textMain,
                         onClick = {
                             val inviteLink = "app://pantry/join/${currentUser.householdId}"
                             clipboardManager.setText(AnnotatedString(inviteLink))
                             Toast.makeText(context, "Invite link copied to clipboard!", Toast.LENGTH_SHORT).show()
                         }
                     )
-                    HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+                    HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
                     SettingsActionRow(
                         icon = Icons.Default.ContentCopy, 
                         iconBg = Color(0xFF34C759), 
                         text = "Copy Household ID",
+                        textColor = textMain,
                         onClick = {
                             val hid = currentUser.householdId
                             clipboardManager.setText(AnnotatedString(hid))
@@ -174,28 +184,47 @@ fun SettingsScreen(
 
         // Preferences Group
         Column(
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C1C1E))
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cardBg)
         ) {
-            SettingsToggleRow(icon = Icons.Default.Palette, iconBg = Color(0xFF007AFF), text = "Dark Mode", checked = darkMode, onCheckedChange = { darkMode = it })
-            HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
-            SettingsToggleRow(icon = Icons.Default.Notifications, iconBg = Color(0xFFFF3B30), text = "Notifications", checked = notifications, onCheckedChange = { notifications = it })
-            HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+            SettingsToggleRow(
+                icon = Icons.Default.Palette, 
+                iconBg = Color(0xFF007AFF), 
+                text = "Dark Mode", 
+                textColor = textMain,
+                checked = isDarkMode, 
+                onCheckedChange = { isChecked ->
+                    UserPreferences.saveDarkMode(context, isChecked)
+                    onToggleDarkMode(isChecked)
+                }
+            )
+            HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+            SettingsToggleRow(
+                icon = Icons.Default.Notifications, 
+                iconBg = Color(0xFFFF3B30), 
+                text = "Notifications", 
+                textColor = textMain,
+                checked = notifications, 
+                onCheckedChange = { notifications = it }
+            )
+            HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
             SettingsActionRow(
                 icon = Icons.Default.Feedback,
                 iconBg = Color(0xFF5856D6),
                 text = "Send App Feedback",
+                textColor = textMain,
                 onClick = { showSendFeedbackDialog = true }
             )
         }
 
         // About / Actions Group
         Column(
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C1C1E))
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cardBg)
         ) {
             SettingsActionRow(
                 icon = Icons.Default.SystemUpdate, 
                 iconBg = Color(0xFF007AFF), 
                 text = "Check for Updates",
+                textColor = textMain,
                 onClick = {
                     Toast.makeText(context, "Checking for updates...", Toast.LENGTH_SHORT).show()
                     AppUpdateManager.checkForUpdates(context, forceShowToast = true) { update ->
@@ -203,14 +232,15 @@ fun SettingsScreen(
                     }
                 }
             )
-            HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+            HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
             SettingsActionRow(
                 icon = Icons.Default.PrivacyTip, 
                 iconBg = Color(0xFF34C759), 
                 text = "Privacy Policy",
+                textColor = textMain,
                 onClick = { showPrivacyPolicyDialog = true }
             )
-            HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+            HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -225,8 +255,8 @@ fun SettingsScreen(
 
         // App Version & Build Footer
         val versionName = try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2"
-        } catch (_: Exception) { "1.2" }
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.3"
+        } catch (_: Exception) { "1.3" }
         val versionCode = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
@@ -234,7 +264,7 @@ fun SettingsScreen(
                 @Suppress("DEPRECATION")
                 context.packageManager.getPackageInfo(context.packageName, 0).versionCode.toLong()
             }
-        } catch (_: Exception) { 3L }
+        } catch (_: Exception) { 14L }
 
         Column(
             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -242,7 +272,7 @@ fun SettingsScreen(
         ) {
             Text(
                 text = "Tasker v$versionName (Build $versionCode)",
-                color = Color.DarkGray,
+                color = textSub,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -984,7 +1014,14 @@ fun ManageHouseholdDialog(
 }
 
 @Composable
-fun SettingsToggleRow(icon: ImageVector, iconBg: Color, text: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+fun SettingsToggleRow(
+    icon: ImageVector, 
+    iconBg: Color, 
+    text: String, 
+    textColor: Color = Color.White,
+    checked: Boolean, 
+    onCheckedChange: (Boolean) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -998,7 +1035,7 @@ fun SettingsToggleRow(icon: ImageVector, iconBg: Color, text: String, checked: B
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
         }
         Spacer(modifier = Modifier.width(16.dp))
-        Text(text, color = Color.White, fontSize = 17.sp, modifier = Modifier.weight(1f))
+        Text(text, color = textColor, fontSize = 17.sp, modifier = Modifier.weight(1f))
         Switch(
             checked = checked, 
             onCheckedChange = onCheckedChange,
@@ -1018,6 +1055,7 @@ fun SettingsActionRow(
     icon: ImageVector, 
     iconBg: Color, 
     text: String,
+    textColor: Color = Color.White,
     onClick: () -> Unit = {}
 ) {
     Row(
@@ -1034,7 +1072,7 @@ fun SettingsActionRow(
             Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
         }
         Spacer(modifier = Modifier.width(16.dp))
-        Text(text, color = Color.White, fontSize = 17.sp, modifier = Modifier.weight(1f))
+        Text(text, color = textColor, fontSize = 17.sp, modifier = Modifier.weight(1f))
         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF8E8E93))
     }
 }

@@ -88,7 +88,8 @@ val defaultShiftsList = listOf(
 
 @Composable
 fun ShiftsScreen(
-    currentUser: UserProfile = UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc")
+    currentUser: UserProfile = UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
+    isDarkMode: Boolean = true
 ) {
     val context = LocalContext.current
     val db = Firebase.firestore
@@ -101,6 +102,11 @@ fun ShiftsScreen(
     var showArchivedHistoryDialog by remember { mutableStateOf(false) }
 
     val activePeriodRange = "Aug 10, 2026 - Aug 23, 2026"
+
+    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
+    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
+    val textMain = if (isDarkMode) Color.White else Color.Black
+    val textSub = if (isDarkMode) Color.Gray else Color(0xFF6C6C70)
 
     // Real-time Firestore Sync for Active Split Shifts & Archived Pay Periods
     LaunchedEffect(currentUser.householdId) {
@@ -168,7 +174,7 @@ fun ShiftsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(screenBg)
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -183,7 +189,7 @@ fun ShiftsScreen(
                 ) {
                     Text(
                         text = "Work Shifts",
-                        color = Color.White,
+                        color = textMain,
                         fontSize = 34.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -192,7 +198,7 @@ fun ShiftsScreen(
                         onClick = { showArchivedHistoryDialog = true },
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF1C1C1E))
+                            .background(cardBg)
                     ) {
                         Icon(Icons.Default.History, contentDescription = "History", tint = Color(0xFF007AFF))
                     }
@@ -204,7 +210,7 @@ fun ShiftsScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E))
+                    colors = CardDefaults.cardColors(containerColor = cardBg)
                 ) {
                     Column(
                         modifier = Modifier.padding(20.dp),
@@ -215,7 +221,7 @@ fun ShiftsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Active 14-Day Pay Period", color = Color.Gray, fontSize = 13.sp)
+                            Text("Active 14-Day Pay Period", color = textSub, fontSize = 13.sp)
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
@@ -226,7 +232,7 @@ fun ShiftsScreen(
                             }
                         }
 
-                        Text("Calculated Net Take-Home Pay", color = Color.Gray, fontSize = 12.sp)
+                        Text("Calculated Net Take-Home Pay", color = textSub, fontSize = 12.sp)
                         Text(
                             text = "$${String.format(Locale.US, "%.2f", netTakeHomePay)}",
                             color = Color(0xFF34C759),
@@ -234,24 +240,24 @@ fun ShiftsScreen(
                             fontWeight = FontWeight.Bold
                         )
 
-                        HorizontalDivider(color = Color(0xFF2C2C2E), thickness = 0.5.dp)
+                        HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp)
 
                         // Payroll Breakdown Grid
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Gross Pay (${String.format(Locale.US, "%.1f", totalShiftHours)} hrs @ $20.16/hr):", color = Color.Gray, fontSize = 12.sp)
-                                Text("$${String.format(Locale.US, "%.2f", grossPaycheck)}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Gross Pay (${String.format(Locale.US, "%.1f", totalShiftHours)} hrs @ $20.16/hr):", color = textSub, fontSize = 12.sp)
+                                Text("$${String.format(Locale.US, "%.2f", grossPaycheck)}", color = textMain, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("OASDI (6.2%) + Medicare (1.45%):", color = Color.Gray, fontSize = 12.sp)
+                                Text("OASDI (6.2%) + Medicare (1.45%):", color = textSub, fontSize = 12.sp)
                                 Text("-$${String.format(Locale.US, "%.2f", oasdiTax + medicareTax)}", color = Color(0xFFFF453A), fontSize = 12.sp)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Federal (~8.5%) + MA State (5.0%):", color = Color.Gray, fontSize = 12.sp)
+                                Text("Federal (~8.5%) + MA State (5.0%):", color = textSub, fontSize = 12.sp)
                                 Text("-$${String.format(Locale.US, "%.2f", federalTax + maStateTax)}", color = Color(0xFFFF453A), fontSize = 12.sp)
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Fixed Deductions (Power, STD/LTD, Homer):", color = Color.Gray, fontSize = 12.sp)
+                                Text("Fixed Deductions (Power, STD/LTD, Homer):", color = textSub, fontSize = 12.sp)
                                 Text("-$${String.format(Locale.US, "%.2f", fixedBenefits)}", color = Color(0xFFFF453A), fontSize = 12.sp)
                             }
                         }
@@ -299,11 +305,11 @@ fun ShiftsScreen(
                                 },
                                 modifier = Modifier.weight(1f).height(48.dp),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2C2E))
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA))
                             ) {
-                                Icon(Icons.Default.Archive, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Archive, contentDescription = null, tint = textSub, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Archive Cycle", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                Text("Archive Cycle", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                             }
                         }
                     }
@@ -313,7 +319,7 @@ fun ShiftsScreen(
             item {
                 Text(
                     text = "Logged Split Shifts",
-                    color = Color.White,
+                    color = textMain,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
@@ -328,14 +334,14 @@ fun ShiftsScreen(
                 }
             } else if (currentShifts.isEmpty()) {
                 item {
-                    Text("No split shifts logged for this pay period.", color = Color.Gray, fontSize = 14.sp)
+                    Text("No split shifts logged for this pay period.", color = textSub, fontSize = 14.sp)
                 }
             } else {
                 items(currentShifts, key = { "shift_" + it.id }) { shift ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E))
+                        colors = CardDefaults.cardColors(containerColor = cardBg)
                     ) {
                         Row(
                             modifier = Modifier
@@ -348,7 +354,7 @@ fun ShiftsScreen(
                                 modifier = Modifier
                                     .size(42.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF2C2C2E)),
+                                    .background(if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Default.Schedule, contentDescription = null, tint = Color(0xFF007AFF), modifier = Modifier.size(20.dp))
@@ -357,11 +363,11 @@ fun ShiftsScreen(
                             Spacer(modifier = Modifier.width(12.dp))
 
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(shift.date, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                                Text(shift.date, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Text("In1: ${shift.clockIn1} ➔ Out1: ${shift.clockOut1}", color = Color.Gray, fontSize = 11.sp)
+                                Text("In1: ${shift.clockIn1} ➔ Out1: ${shift.clockOut1}", color = textSub, fontSize = 11.sp)
                                 if (shift.clockIn2.isNotBlank() && shift.clockOut2.isNotBlank()) {
-                                    Text("In2: ${shift.clockIn2} ➔ Out2: ${shift.clockOut2}", color = Color.Gray, fontSize = 11.sp)
+                                    Text("In2: ${shift.clockIn2} ➔ Out2: ${shift.clockOut2}", color = textSub, fontSize = 11.sp)
                                 }
                                 Text("${String.format(Locale.US, "%.1f", shift.totalHours)} Total Hours", color = Color(0xFF007AFF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
@@ -373,7 +379,7 @@ fun ShiftsScreen(
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Text("$20.16/hr", color = Color.DarkGray, fontSize = 10.sp)
+                                Text("$20.16/hr", color = textSub, fontSize = 10.sp)
                             }
 
                             Spacer(modifier = Modifier.width(8.dp))

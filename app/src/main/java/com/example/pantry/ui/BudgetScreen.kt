@@ -34,6 +34,11 @@ import java.util.TimeZone
 import java.util.UUID
 import kotlin.math.abs
 
+enum class BudgetSubTab(val label: String) {
+    BILLS("Monthly Bills"),
+    TRANSACTIONS("Recent Transactions")
+}
+
 data class BillItem(
     val id: String = "",
     val name: String,
@@ -64,10 +69,23 @@ val defaultBillsList = listOf(
     BillItem("b11", "Rent a Center", 380.06, "Due 19th", false)
 )
 
+private fun parseDueDateNumber(dueDate: String): Int {
+    if (dueDate.contains("/")) {
+        val parts = dueDate.split("/")
+        if (parts.size >= 2) {
+            val day = parts[1].toIntOrNull() ?: 1
+            return day + 31
+        }
+    }
+    val digits = dueDate.filter { it.isDigit() }
+    return digits.toIntOrNull() ?: 99
+}
+
 @Composable
 fun BudgetScreen(
     modifier: Modifier = Modifier,
     currentUser: UserProfile = UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
+    isDarkMode: Boolean = true,
     transactions: List<BudgetTransaction> = emptyList(),
     bills: List<BillItem> = emptyList(),
     monthlyLimit: Double = 1804.66,
@@ -78,6 +96,7 @@ fun BudgetScreen(
     BudgetScreenContent(
         modifier = modifier,
         currentUser = currentUser,
+        isDarkMode = isDarkMode,
         transactions = transactions,
         bills = bills.ifEmpty { defaultBillsList },
         monthlyLimit = monthlyLimit,
@@ -91,6 +110,7 @@ fun BudgetScreen(
 fun BudgetScreenContent(
     modifier: Modifier = Modifier,
     currentUser: UserProfile,
+    isDarkMode: Boolean = true,
     transactions: List<BudgetTransaction>,
     bills: List<BillItem>,
     monthlyLimit: Double,
@@ -101,20 +121,34 @@ fun BudgetScreenContent(
     val context = LocalContext.current
     val db = Firebase.firestore
 
+    var selectedSubTab by remember { mutableStateOf(BudgetSubTab.BILLS) }
+
     var showAddBillDialog by remember { mutableStateOf(false) }
     var showAddTransactionDialog by remember { mutableStateOf(false) }
     var showEditBudgetDialog by remember { mutableStateOf(false) }
     var billToEdit by remember { mutableStateOf<BillItem?>(null) }
 
+    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
+    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
+    val textMain = if (isDarkMode) Color.White else Color.Black
+    val textSub = if (isDarkMode) Color(0xFF8E8E93) else Color(0xFF6C6C70)
+
+    val totalMonthlyBills = remember(bills) { bills.sumOf { it.amount } }
+    val effectiveLimit = if (monthlyLimit <= 0.0) totalMonthlyBills else monthlyLimit
     val totalSpent = remember(transactions) { transactions.sumOf { abs(it.amount) } }
-    val totalBills = remember(bills) { bills.filter { it.isPaid }.sumOf { it.amount } }
-    val remainingBalance = monthlyLimit - (totalSpent + totalBills)
-    val progress = if (monthlyLimit > 0) ((totalSpent + totalBills) / monthlyLimit).coerceIn(0.0, 1.0).toFloat() else 0f
+    val totalPaidBills = remember(bills) { bills.filter { it.isPaid }.sumOf { it.amount } }
+    val remainingBalance = effectiveLimit - (totalSpent + totalPaidBills)
+    val progress = if (effectiveLimit > 0) ((totalSpent + totalPaidBills) / effectiveLimit).coerceIn(0.0, 1.0).toFloat() else 0f
+
+    // Chronological due date sorting (1st to 30th)
+    val sortedBills = remember(bills) {
+        bills.sortedBy { parseDueDateNumber(it.dueDate) }
+    }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF000000))
+            .background(screenBg)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -127,20 +161,28 @@ fun BudgetScreenContent(
             ) {
                 Text(
                     text = "Budget & Bills",
-                    color = Color.White,
+                    color = textMain,
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold
                 )
 
                 Button(
-                    onClick = { showAddTransactionDialog = true },
+                    onClick = {
+                        if (selectedSubTab == BudgetSubTab.BILLS) showAddBillDialog = true
+                        else showAddTransactionDialog = true
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF)),
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Expense", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (selectedSubTab == BudgetSubTab.BILLS) "Add Bill" else "Add Expense",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -152,7 +194,7 @@ fun BudgetScreenContent(
                     .fillMaxWidth()
                     .clickable { showEditBudgetDialog = true },
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E))
+                colors = CardDefaults.cardColors(containerColor = cardBg)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Row(
@@ -160,13 +202,13 @@ fun BudgetScreenContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Remaining Safe-to-Spend", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                        Text("Remaining Safe-to-Spend", color = textSub, fontSize = 14.sp)
                         Icon(Icons.Default.Edit, contentDescription = "Edit Limit", tint = Color(0xFF0A84FF), modifier = Modifier.size(18.dp))
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "$${String.format(Locale.US, "%.2f", remainingBalance)}",
-                        color = Color.White,
+                        color = textMain,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -178,163 +220,205 @@ fun BudgetScreenContent(
                             .height(8.dp)
                             .clip(RoundedCornerShape(50)),
                         color = if (progress >= 0.9f) Color(0xFFFF453A) else Color(0xFF0A84FF),
-                        trackColor = Color(0xFF3A3A3C),
+                        trackColor = if (isDarkMode) Color(0xFF3A3A3C) else Color(0xFFE5E5EA),
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Spent + Bills: $${String.format(Locale.US, "%.2f", totalSpent + totalBills)}", color = Color(0xFF8E8E93), fontSize = 12.sp)
-                        Text("Total Bills: $${String.format(Locale.US, "%.2f", monthlyLimit)}", color = Color(0xFF8E8E93), fontSize = 12.sp)
+                        Text("Spent + Paid: $${String.format(Locale.US, "%.2f", totalSpent + totalPaidBills)}", color = textSub, fontSize = 12.sp)
+                        Text("Total Monthly Bills: $${String.format(Locale.US, "%.2f", totalMonthlyBills)}", color = textSub, fontSize = 12.sp)
                     }
                 }
             }
         }
 
-        // Bill Tracker Section Header
+        // Segmented Control Sub-Tab Pill Row
         item {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(cardBg)
+                    .padding(4.dp)
             ) {
-                Text("Monthly Bills", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                TextButton(onClick = { showAddBillDialog = true }) {
-                    Text("+ Add Bill", color = Color(0xFF0A84FF), fontWeight = FontWeight.Bold)
+                BudgetSubTab.entries.forEach { subTab ->
+                    val isSelected = selectedSubTab == subTab
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSelected) Color(0xFF0A84FF) else Color.Transparent)
+                            .clickable { selectedSubTab = subTab }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = subTab.label,
+                            color = if (isSelected) Color.White else textSub,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
                 }
             }
         }
 
-        if (bills.isEmpty()) {
+        // Sub-Tab Content Switching
+        if (selectedSubTab == BudgetSubTab.BILLS) {
+            // SUB-TAB 1: MONTHLY BILLS
             item {
-                Text("No monthly bills logged.", color = Color.Gray, fontSize = 14.sp)
-            }
-        } else {
-            // Monthly Bills List (Clickable to Edit Amount / Due Date)
-            items(bills, key = { "bill_" + it.id }) { bill ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { billToEdit = bill },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
+                    Text("Monthly Bills", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { showAddBillDialog = true }) {
+                        Text("+ Add Bill", color = Color(0xFF0A84FF), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (sortedBills.isEmpty()) {
+                item {
+                    Text("No monthly bills logged.", color = textSub, fontSize = 14.sp)
+                }
+            } else {
+                items(sortedBills, key = { "bill_" + it.id }) { bill ->
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .clickable { billToEdit = bill },
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = cardBg)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(bill.name, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(Icons.Default.Edit, contentDescription = "Edit Amount", tint = Color(0xFF0A84FF), modifier = Modifier.size(14.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(bill.name, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit Amount", tint = Color(0xFF0A84FF), modifier = Modifier.size(14.dp))
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(bill.dueDate, color = textSub, fontSize = 12.sp)
                             }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(bill.dueDate, color = Color(0xFF8E8E93), fontSize = 12.sp)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("$${String.format(Locale.US, "%.2f", bill.amount)}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Switch(
-                                checked = bill.isPaid,
-                                onCheckedChange = { checked ->
-                                    val updatedBill = bill.copy(isPaid = checked)
-                                    val updatedList = bills.map { if (it.id == bill.id) updatedBill else it }
-                                    onUpdateBills(updatedList)
-                                    
-                                    currentUser.householdId?.let { hid ->
-                                        val billDoc = db.collection("households").document(hid).collection("bills").document(bill.id)
-                                        billDoc.set(
-                                            hashMapOf(
-                                                "name" to bill.name,
-                                                "amount" to bill.amount,
-                                                "dueDate" to bill.dueDate,
-                                                "isPaid" to checked
-                                            )
-                                        )
-                                    }
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF34C759)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("$${String.format(Locale.US, "%.2f", bill.amount)}", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Switch(
+                                    checked = bill.isPaid,
+                                    onCheckedChange = { checked ->
+                                        val updatedList = bills.map { b ->
+                                            if (b.id == bill.id) b.copy(isPaid = checked) else b
+                                        }
+                                        onUpdateBills(updatedList)
+                                        
+                                        currentUser.householdId?.let { hid ->
+                                            updatedList.forEach { b ->
+                                                db.collection("households").document(hid).collection("bills").document(b.id).set(
+                                                    hashMapOf(
+                                                        "name" to b.name,
+                                                        "amount" to b.amount,
+                                                        "dueDate" to b.dueDate,
+                                                        "isPaid" to b.isPaid
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFF34C759)
+                                    )
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                IconButton(
+                                    onClick = {
+                                        val updatedList = bills.filter { it.id != bill.id }
+                                        onUpdateBills(updatedList)
+                                        currentUser.householdId?.let { hid ->
+                                            db.collection("households").document(hid)
+                                                .collection("bills").document(bill.id)
+                                                .delete()
+                                        }
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete Bill", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // SUB-TAB 2: RECENT TRANSACTIONS
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Recent Transactions", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { showAddTransactionDialog = true }) {
+                        Text("+ Add Expense", color = Color(0xFF0A84FF), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (transactions.isEmpty()) {
+                item {
+                    Text("No recent transactions found.", color = textSub, fontSize = 14.sp)
+                }
+            } else {
+                items(transactions, key = { "tx_" + it.id }) { tx ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = cardBg)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(tx.title, color = textMain, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(tx.account, color = textSub, fontSize = 12.sp)
+                                Text(tx.date, color = Color.Gray, fontSize = 10.sp)
+                            }
+                            Text(
+                                text = if (tx.amount < 0) "-$${String.format(Locale.US, "%.2f", abs(tx.amount))}" else "+$${String.format(Locale.US, "%.2f", tx.amount)}",
+                                color = if (tx.amount < 0) Color(0xFFFF453A) else Color(0xFF34C759),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             IconButton(
                                 onClick = {
-                                    val updatedList = bills.filter { it.id != bill.id }
-                                    onUpdateBills(updatedList)
+                                    val updatedList = transactions.filter { it.id != tx.id }
+                                    onUpdateTransactions(updatedList)
                                     currentUser.householdId?.let { hid ->
                                         db.collection("households").document(hid)
-                                            .collection("bills").document(bill.id)
+                                            .collection("transactions").document(tx.id)
                                             .delete()
                                     }
                                 },
                                 modifier = Modifier.size(24.dp)
                             ) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete Bill", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Delete, contentDescription = "Delete Transaction", tint = Color.Gray, modifier = Modifier.size(16.dp))
                             }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Recent Transactions Header
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Recent Transactions", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-
-        if (transactions.isEmpty()) {
-            item {
-                Text("No recent transactions found.", color = Color.Gray, fontSize = 14.sp)
-            }
-        } else {
-            // Recent Transactions List (Prefix Key to guarantee uniqueness across LazyColumn)
-            items(transactions, key = { "tx_" + it.id }) { tx ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(tx.title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(tx.account, color = Color(0xFF8E8E93), fontSize = 12.sp)
-                            Text(tx.date, color = Color.DarkGray, fontSize = 10.sp)
-                        }
-                        Text(
-                            text = if (tx.amount < 0) "-$${String.format(Locale.US, "%.2f", abs(tx.amount))}" else "+$${String.format(Locale.US, "%.2f", tx.amount)}",
-                            color = if (tx.amount < 0) Color(0xFFFF453A) else Color(0xFF34C759),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        IconButton(
-                            onClick = {
-                                val updatedList = transactions.filter { it.id != tx.id }
-                                onUpdateTransactions(updatedList)
-                                currentUser.householdId?.let { hid ->
-                                    db.collection("households").document(hid)
-                                        .collection("transactions").document(tx.id)
-                                        .delete()
-                                }
-                            },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete Transaction", tint = Color.Gray, modifier = Modifier.size(16.dp))
                         }
                     }
                 }

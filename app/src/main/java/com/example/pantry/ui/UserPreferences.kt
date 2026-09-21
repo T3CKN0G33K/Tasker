@@ -11,6 +11,7 @@ object UserPreferences {
     private const val KEY_ROLE = "role"
     private const val KEY_HOUSEHOLD_ID = "household_id"
     private const val KEY_CAN_MANAGE = "can_manage_household"
+    private const val KEY_DARK_MODE = "dark_mode"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -39,6 +40,14 @@ object UserPreferences {
         val canManage = prefs.getBoolean(KEY_CAN_MANAGE, false)
 
         return UserProfile(uid, name, email, role, householdId, canManage)
+    }
+
+    fun saveDarkMode(context: Context, isDark: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_DARK_MODE, isDark).apply()
+    }
+
+    fun isDarkMode(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_DARK_MODE, true)
     }
 
     fun clear(context: Context) {

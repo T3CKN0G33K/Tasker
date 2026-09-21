@@ -41,6 +41,7 @@ import java.util.UUID
 
 @Composable
 fun AddScreen(
+    isDarkMode: Boolean = true,
     onAddItem: (PantryItem) -> Unit = {}
 ) {
     var itemName by remember { mutableStateOf("") }
@@ -53,6 +54,12 @@ fun AddScreen(
 
     val context = LocalContext.current
     val categories = listOf("Dry Goods", "Beverages", "Pet Care", "Household")
+
+    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
+    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
+    val textMain = if (isDarkMode) Color.White else Color.Black
+    val textSub = if (isDarkMode) Color.Gray else Color(0xFF6C6C70)
+    val stepperBg = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
 
     fun startBarcodeScan() {
         try {
@@ -114,14 +121,14 @@ fun AddScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(screenBg)
             .verticalScroll(rememberScrollState())
             .padding(top = 64.dp, bottom = 120.dp, start = 20.dp, end = 20.dp),
         verticalArrangement = Arrangement.spacedBy(28.dp)
     ) {
         Text(
             text = "Add Item",
-            color = Color.White,
+            color = textMain,
             fontSize = 34.sp,
             fontWeight = FontWeight.Bold
         )
@@ -160,17 +167,17 @@ fun AddScreen(
                 itemName = it
                 isSaved = false
             },
-            placeholder = { Text("Item Name", color = Color.Gray) },
+            placeholder = { Text("Item Name", color = textSub) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color(0xFF1C1C1E),
-                unfocusedContainerColor = Color(0xFF1C1C1E),
+                focusedContainerColor = cardBg,
+                unfocusedContainerColor = cardBg,
                 focusedBorderColor = Color(0xFF007AFF),
                 unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
+                focusedTextColor = textMain,
+                unfocusedTextColor = textMain,
                 cursorColor = Color(0xFF007AFF)
             )
         )
@@ -179,25 +186,25 @@ fun AddScreen(
         OutlinedTextField(
             value = priceText,
             onValueChange = { priceText = it },
-            placeholder = { Text("Unit Price ($ e.g. 6.98)", color = Color.Gray) },
+            placeholder = { Text("Unit Price ($ e.g. 6.98)", color = textSub) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color(0xFF1C1C1E),
-                unfocusedContainerColor = Color(0xFF1C1C1E),
+                focusedContainerColor = cardBg,
+                unfocusedContainerColor = cardBg,
                 focusedBorderColor = Color(0xFF007AFF),
                 unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
+                focusedTextColor = textMain,
+                unfocusedTextColor = textMain,
                 cursorColor = Color(0xFF007AFF)
             )
         )
 
         // Category Selector
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Category", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text("Category", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -209,13 +216,13 @@ fun AddScreen(
                             .weight(1f)
                             .height(44.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) Color(0xFF007AFF) else Color(0xFF1C1C1E))
+                            .background(if (isSelected) Color(0xFF007AFF) else cardBg)
                             .clickable { selectedCategory = category },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = category,
-                            color = if (isSelected) Color.White else Color.Gray,
+                            color = if (isSelected) Color.White else textSub,
                             fontSize = 11.sp,
                             maxLines = 1,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
@@ -231,12 +238,12 @@ fun AddScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF1C1C1E))
+                .background(cardBg)
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text("Quantity", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text("Quantity", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -245,13 +252,13 @@ fun AddScreen(
                     onClick = { if (quantity > 1) quantity-- },
                     modifier = Modifier
                         .size(36.dp)
-                        .background(Color(0xFF2C2C2E), RoundedCornerShape(10.dp))
+                        .background(stepperBg, RoundedCornerShape(10.dp))
                 ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = Color.White)
+                    Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = textMain)
                 }
                 Text(
                     text = quantity.toString(), 
-                    color = Color.White, 
+                    color = textMain, 
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -271,14 +278,14 @@ fun AddScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF1C1C1E))
+                .background(cardBg)
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Text("Low Stock Threshold", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text("Triggers restock alert when quantity ≤ this number", color = Color.Gray, fontSize = 11.sp)
+                Text("Low Stock Threshold", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text("Triggers restock alert when quantity ≤ this number", color = textSub, fontSize = 11.sp)
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -288,9 +295,9 @@ fun AddScreen(
                     onClick = { if (lowStockThreshold > 0) lowStockThreshold-- },
                     modifier = Modifier
                         .size(36.dp)
-                        .background(Color(0xFF2C2C2E), RoundedCornerShape(10.dp))
+                        .background(stepperBg, RoundedCornerShape(10.dp))
                 ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Decrease Threshold", tint = Color.White)
+                    Icon(Icons.Default.Remove, contentDescription = "Decrease Threshold", tint = textMain)
                 }
                 Text(
                     text = lowStockThreshold.toString(), 

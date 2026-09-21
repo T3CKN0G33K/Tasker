@@ -49,6 +49,7 @@ val samplePantryData = listOf(
 @Composable
 fun PantryScreen(
     items: List<PantryItem> = samplePantryData,
+    isDarkMode: Boolean = true,
     onItemsChange: (List<PantryItem>) -> Unit = {},
     onItemUpdate: (PantryItem) -> Unit = {},
     onItemDelete: (String) -> Unit = {}
@@ -56,6 +57,11 @@ fun PantryScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategoryFilter by remember { mutableStateOf("All") }
     var itemToEdit by remember { mutableStateOf<PantryItem?>(null) }
+
+    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
+    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
+    val textMain = if (isDarkMode) Color.White else Color.Black
+    val textSub = if (isDarkMode) Color.Gray else Color(0xFF6C6C70)
 
     val categoryList = remember(items) {
         listOf("All") + items.map { it.category }.distinct().filter { it.isNotBlank() }
@@ -71,7 +77,7 @@ fun PantryScreen(
         }
     }
 
-    // Low Stock Restock Budget Estimate Calculation (Accurately supports fractional quantities)
+    // Low Stock Restock Budget Estimate Calculation
     val lowStockItems = remember(items) { items.filter { it.quantity <= it.lowStockThreshold } }
     val totalRestockEstimate = remember(lowStockItems) {
         lowStockItems.sumOf { item ->
@@ -83,7 +89,7 @@ fun PantryScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(screenBg)
     ) {
         // LAYER 1: Scrolling Content
         LazyColumn(
@@ -95,7 +101,7 @@ fun PantryScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
                         text = "My Pantry",
-                        color = Color.White,
+                        color = textMain,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(start = 8.dp)
@@ -105,7 +111,7 @@ fun PantryScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1C1E))
+                        colors = CardDefaults.cardColors(containerColor = cardBg)
                     ) {
                         Row(
                             modifier = Modifier
@@ -131,10 +137,10 @@ fun PantryScreen(
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text("Low Stock Restock Estimate", color = Color.Gray, fontSize = 12.sp)
+                                    Text("Low Stock Restock Estimate", color = textSub, fontSize = 12.sp)
                                     Text(
                                         text = "$${String.format(Locale.US, "%.2f", totalRestockEstimate)}",
-                                        color = Color.White,
+                                        color = textMain,
                                         fontSize = 22.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -144,7 +150,7 @@ fun PantryScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.2f) else Color(0xFF2C2C2E))
+                                    .background(if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.2f) else if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA))
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
@@ -169,13 +175,13 @@ fun PantryScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(20.dp))
-                                    .background(if (isSelected) Color(0xFF007AFF) else Color(0xFF1C1C1E))
+                                    .background(if (isSelected) Color(0xFF007AFF) else cardBg)
                                     .clickable { selectedCategoryFilter = category }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Text(
                                     text = category,
-                                    color = if (isSelected) Color.White else Color.Gray,
+                                    color = if (isSelected) Color.White else textSub,
                                     fontSize = 12.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 )
@@ -196,7 +202,7 @@ fun PantryScreen(
                         Text(
                             text = if (searchQuery.isNotBlank() || selectedCategoryFilter != "All") "No matching items found." else "Your Pantry is empty! Tap 'Add' to restock.",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = Color(0xFF8E8E93)
+                            color = textSub
                         )
                     }
                 }
@@ -204,6 +210,7 @@ fun PantryScreen(
                 items(filteredList, key = { it.id }) { item ->
                     PantryItemCard(
                         item = item,
+                        isDarkMode = isDarkMode,
                         onQuantityChange = { newQty ->
                             onItemUpdate(item.copy(quantity = newQty))
                         },
@@ -222,10 +229,10 @@ fun PantryScreen(
             NativeLiquidGlass(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(Color.Black.copy(alpha = 0.45f)),
+                    .background(if (isDarkMode) Color.Black.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.65f)),
                 blurRadius = 30.dp,
                 shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
-                isDarkTheme = true
+                isDarkTheme = isDarkMode
             )
 
             Row(
@@ -235,20 +242,20 @@ fun PantryScreen(
                     .padding(top = 8.dp, bottom = 12.dp, start = 16.dp, end = 16.dp)
                     .height(36.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF767680).copy(alpha = 0.24f)),
+                    .background(if (isDarkMode) Color(0xFF767680).copy(alpha = 0.24f) else Color(0xFF767680).copy(alpha = 0.12f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Spacer(modifier = Modifier.width(8.dp))
-                Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF8E8E93), modifier = Modifier.size(20.dp))
+                Icon(Icons.Default.Search, contentDescription = "Search", tint = textSub, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 BasicTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White, fontSize = 16.sp),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = textMain, fontSize = 16.sp),
                     decorationBox = { innerTextField ->
                         if (searchQuery.isEmpty()) {
-                            Text("Search Pantry", color = Color(0xFF8E8E93), fontSize = 16.sp)
+                            Text("Search Pantry", color = textSub, fontSize = 16.sp)
                         }
                         innerTextField()
                     },
@@ -278,17 +285,22 @@ fun PantryScreen(
 @Composable
 fun PantryItemCard(
     item: PantryItem,
+    isDarkMode: Boolean = true,
     onQuantityChange: (Double) -> Unit,
     onEdit: () -> Unit
 ) {
     val isLowStock = item.quantity <= item.lowStockThreshold
     val formattedQty = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else String.format(Locale.US, "%.2f", item.quantity)
 
+    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
+    val textMain = if (isDarkMode) Color.White else Color.Black
+    val pillBg = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF1C1C1E))
+            .background(cardBg)
             .clickable { onEdit() }
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -337,7 +349,7 @@ fun PantryItemCard(
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(text = item.name, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = item.name, color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                 
                 // Unit Price Tag
                 if (item.price > 0) {
@@ -360,15 +372,15 @@ fun PantryItemCard(
                     onClick = { if (item.quantity > 0) onQuantityChange((item.quantity - 0.25).coerceAtLeast(0.0)) },
                     modifier = Modifier
                         .size(32.dp)
-                        .background(Color(0xFF2C2C2E), CircleShape)
+                        .background(pillBg, CircleShape)
                 ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = textMain, modifier = Modifier.size(16.dp))
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = formattedQty,
-                        color = if (isLowStock) Color(0xFFFF3B30) else Color.White,
+                        color = if (isLowStock) Color(0xFFFF3B30) else textMain,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -386,7 +398,7 @@ fun PantryItemCard(
             }
         }
 
-        // Quick Fractional Fill Level Selector Pills (1/4 Bag, 1/2 Bag, 3/4 Bag, Full)
+        // Quick Fractional Fill Level Selector Pills
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -403,14 +415,14 @@ fun PantryItemCard(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (isCurrent) Color(0xFF007AFF) else Color(0xFF2C2C2E))
+                        .background(if (isCurrent) Color(0xFF007AFF) else pillBg)
                         .clickable { onQuantityChange(value) }
                         .padding(vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = label,
-                        color = if (isCurrent) Color.White else Color.Gray,
+                        color = if (isCurrent) Color.White else if (isDarkMode) Color.Gray else Color(0xFF6C6C70),
                         fontSize = 10.sp,
                         fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
                     )
