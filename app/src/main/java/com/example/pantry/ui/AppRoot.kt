@@ -1,8 +1,10 @@
 package com.example.pantry.ui
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -28,7 +30,14 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.util.Locale
 import java.util.UUID
 
 enum class AppState { LOADING, AUTH, ONBOARDING, DASHBOARD }
@@ -64,17 +73,30 @@ fun AppRoot() {
         }
     }
 
-    // On App Startup: Load local preferences first, then sync with Firebase Auth & Firestore in real-time
+    // On App Startup: Check local preferences and sync remote Firestore profile for auth & household routing
     LaunchedEffect(Unit) {
         val savedProfile = UserPreferences.getUser(context)
         val firebaseUser = auth.currentUser
 
+        Log.d("AUTH_DEBUG", "App Startup -> savedProfile: ${savedProfile?.householdId}, firebaseUser: ${firebaseUser?.uid}")
+
         if (savedProfile != null && !savedProfile.householdId.isNullOrBlank() && firebaseUser != null) {
-            // Instant load from device storage!
+            // Instant load from local storage
             activeUser = savedProfile
             currentAppState = AppState.DASHBOARD
 
-            // Real-time listener on users/{uid} to sync roles, permissions, and household IDs instantly across versions
+            // Sync user profile & householdId to Firestore users/{uid} root document
+            val userSyncMap = hashMapOf<String, Any?>(
+                "uid" to firebaseUser.uid,
+                "name" to savedProfile.name,
+                "email" to savedProfile.email,
+                "role" to savedProfile.role.name,
+                "householdId" to savedProfile.householdId,
+                "canManageHousehold" to savedProfile.canManageHousehold
+            )
+            db.collection("users").document(firebaseUser.uid).set(userSyncMap, SetOptions.merge())
+
+            // Real-time listener on users/{uid} to sync roles, permissions, and household IDs
             db.collection("users").document(firebaseUser.uid)
                 .addSnapshotListener { doc, _ ->
                     if (doc != null && doc.exists()) {
@@ -89,44 +111,17 @@ fun AppRoot() {
                     }
                 }
         } else if (firebaseUser != null) {
-            db.collection("users").document(firebaseUser.uid)
-                .addSnapshotListener { doc, _ ->
-                    val uid = firebaseUser.uid
-                    val email = firebaseUser.email ?: ""
-                    val name = doc?.getString("name") ?: email.substringBefore("@").ifBlank { "User" }
-                    val roleStr = doc?.getString("role") ?: "OWNER"
-                    val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
-                    val householdId = doc?.getString("householdId") ?: savedProfile?.householdId
-                    val canManage = doc?.getBoolean("canManageHousehold") ?: false
-
-                    if (!householdId.isNullOrBlank()) {
-                        val profile = UserProfile(uid, name, email, role, householdId, canManage)
-                        activeUser = profile
-                        UserPreferences.saveUser(context, profile)
-                        currentAppState = AppState.DASHBOARD
-                    } else {
-                        // Check collectionGroup("members") for membership recovery
-                        db.collectionGroup("members").whereEqualTo("email", email).get()
-                            .addOnSuccessListener { memberDocs ->
-                                val foundDoc = memberDocs.documents.firstOrNull()
-                                val recoveredHid = foundDoc?.getString("householdId")
-                                val recoveredRoleStr = foundDoc?.getString("role") ?: "MEMBER"
-                                val recoveredRole = try { Role.valueOf(recoveredRoleStr) } catch (_: Exception) { Role.MEMBER }
-                                val recoveredCanManage = foundDoc?.getBoolean("canManageHousehold") ?: false
-
-                                val profile = UserProfile(uid, name, email, if (recoveredHid != null) recoveredRole else role, recoveredHid, recoveredCanManage)
-                                activeUser = profile
-                                UserPreferences.saveUser(context, profile)
-                                currentAppState = if (recoveredHid.isNullOrBlank()) AppState.ONBOARDING else AppState.DASHBOARD
-                            }
-                            .addOnFailureListener {
-                                val profile = UserProfile(uid, name, email, role, null, false)
-                                activeUser = profile
-                                UserPreferences.saveUser(context, profile)
-                                currentAppState = AppState.ONBOARDING
-                            }
-                    }
-                }
+            // Async Navigation Guard: Keep AppState.LOADING active while Firestore fetch is in-flight!
+            currentAppState = AppState.LOADING
+            handleUserAuthSuccess(
+                uid = firebaseUser.uid,
+                email = firebaseUser.email ?: "",
+                db = db,
+                context = context
+            ) { profile, targetState ->
+                activeUser = profile
+                currentAppState = targetState
+            }
         } else {
             currentAppState = AppState.AUTH
         }
@@ -145,22 +140,33 @@ fun AppRoot() {
             when (state) {
                 AppState.LOADING -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Color(0xFF007AFF))
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            CircularProgressIndicator(color = Color(0xFF007AFF))
+                            Text("Connecting to Household...", color = Color.Gray, fontSize = 14.sp)
+                        }
                     }
                 }
                 AppState.AUTH -> AuthScreen(
-                    onLoginSuccess = { user -> 
-                        activeUser = user
-                        UserPreferences.saveUser(context, user)
-                        currentAppState = if (user.householdId.isNullOrBlank()) AppState.ONBOARDING else AppState.DASHBOARD
+                    onAuthRouting = { profile, targetState ->
+                        activeUser = profile
+                        currentAppState = targetState
                     }
                 )
                 AppState.ONBOARDING -> OnboardingScreen(
-                    user = activeUser!!,
+                    user = activeUser ?: UserProfile("", "", "", Role.OWNER, null, false),
                     onHouseholdJoined = { updatedUser ->
                         activeUser = updatedUser
                         UserPreferences.saveUser(context, updatedUser)
                         currentAppState = AppState.DASHBOARD
+                    },
+                    onSignOut = {
+                        auth.signOut()
+                        UserPreferences.clear(context)
+                        activeUser = null
+                        currentAppState = AppState.AUTH
                     }
                 )
                 AppState.DASHBOARD -> DashboardScreen(
@@ -186,6 +192,191 @@ fun AppRoot() {
             updateInfo = updateInfo,
             onDismiss = { pendingUpdate = null }
         )
+    }
+}
+
+// Resilient 5-Stage Fail-Safe Recovery Pipeline with AUTH_DEBUG logging & Async Navigation Guard
+fun handleUserAuthSuccess(
+    uid: String,
+    email: String,
+    db: FirebaseFirestore,
+    context: Context,
+    retryCount: Int = 0,
+    onResult: (UserProfile, AppState) -> Unit
+) {
+    val rawEmail = email.trim()
+    val lowerEmail = rawEmail.lowercase(Locale.US)
+    val auth = Firebase.auth
+    val currentUser = auth.currentUser
+
+    Log.d("AUTH_DEBUG", "Step 1: Initiating handleUserAuthSuccess for uid='$uid', email='$rawEmail', retryCount=$retryCount")
+
+    fun completeRouting(householdId: String, role: Role, name: String, canManage: Boolean) {
+        Log.d("AUTH_DEBUG", "Complete Routing -> Auto-linking householdId='$householdId' into users/$uid. Target: DASHBOARD")
+        val profile = UserProfile(uid, name, rawEmail, role, householdId, canManage)
+        UserPreferences.saveUser(context, profile)
+
+        // Automatically link persistent householdId field at users/{userId}
+        db.collection("users").document(uid).set(
+            hashMapOf(
+                "uid" to uid,
+                "name" to name,
+                "email" to rawEmail,
+                "role" to role.name,
+                "householdId" to householdId,
+                "canManageHousehold" to canManage
+            ),
+            SetOptions.merge()
+        )
+
+        onResult(profile, AppState.DASHBOARD)
+    }
+
+    fun retryOrFail() {
+        if (retryCount < 3) {
+            Log.w("AUTH_DEBUG", "Household check inconclusive. Scheduling retry ${retryCount + 1}/3 after 1000ms delay.")
+            CoroutineScope(Dispatchers.Main).launch {
+                delay(1000)
+                handleUserAuthSuccess(uid, email, db, context, retryCount + 1, onResult)
+            }
+        } else {
+            Log.w("AUTH_DEBUG", "All 5 recovery stages inconclusive for $uid / $rawEmail. Navigating to ONBOARDING.")
+            val profile = UserProfile(uid, rawEmail.substringBefore("@"), rawEmail, Role.OWNER, null, false)
+            UserPreferences.saveUser(context, profile)
+            onResult(profile, AppState.ONBOARDING)
+        }
+    }
+
+    // Refresh Auth ID Token before issuing Firestore queries
+    currentUser?.getIdToken(false)?.addOnCompleteListener { tokenTask ->
+        if (tokenTask.exception != null) {
+            Log.e("AUTH_DEBUG", "Auth Token Refresh Exception: ${tokenTask.exception?.message}", tokenTask.exception)
+        }
+
+        // STAGE 1: Fetch users/{userId} directly
+        Log.d("AUTH_DEBUG", "STAGE 1: Fetching users/$uid from Firestore.")
+        db.collection("users").document(uid).get()
+            .addOnSuccessListener { userDoc ->
+                val snapshotExists = userDoc != null && userDoc.exists()
+                Log.d("AUTH_DEBUG", "STAGE 1 Result -> users/$uid snapshotExists=$snapshotExists, data=${userDoc?.data}")
+
+                val hid = userDoc?.getString("householdId")
+                if (snapshotExists && !hid.isNullOrBlank()) {
+                    val name = userDoc.getString("name") ?: rawEmail.substringBefore("@").ifBlank { "User" }
+                    val roleStr = userDoc.getString("role") ?: "OWNER"
+                    val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
+                    val canManage = userDoc.getBoolean("canManageHousehold") ?: (role == Role.OWNER || role == Role.ADMIN)
+                    
+                    completeRouting(hid, role, name, canManage)
+                    return@addOnSuccessListener
+                }
+
+                // STAGE 2: Search users collection by email
+                Log.d("AUTH_DEBUG", "STAGE 2: users/$uid lacks householdId. Searching users collection by email='$rawEmail'.")
+                db.collection("users").whereIn("email", listOf(rawEmail, lowerEmail).distinct()).get()
+                    .addOnSuccessListener { emailUsers ->
+                        Log.d("AUTH_DEBUG", "STAGE 2 Result -> users matching email count=${emailUsers.size()}")
+                        val emailDoc = emailUsers.documents.firstOrNull { !it.getString("householdId").isNullOrBlank() }
+                        val emailHid = emailDoc?.getString("householdId")
+
+                        if (!emailHid.isNullOrBlank()) {
+                            val name = emailDoc?.getString("name") ?: rawEmail.substringBefore("@").ifBlank { "User" }
+                            val roleStr = emailDoc?.getString("role") ?: "OWNER"
+                            val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
+                            val canManage = emailDoc?.getBoolean("canManageHousehold") ?: (role == Role.OWNER || role == Role.ADMIN)
+                            completeRouting(emailHid, role, name, canManage)
+                            return@addOnSuccessListener
+                        }
+
+                        // STAGE 3: Search households collection where ownerId == uid
+                        Log.d("AUTH_DEBUG", "STAGE 3: Searching households collection where ownerId=='$uid'.")
+                        db.collection("households").whereEqualTo("ownerId", uid).get()
+                            .addOnSuccessListener { ownerDocs ->
+                                Log.d("AUTH_DEBUG", "STAGE 3 Result -> households where ownerId=='$uid' count=${ownerDocs.size()}")
+                                val ownerDoc = ownerDocs.documents.firstOrNull()
+                                val ownerHid = ownerDoc?.id?.ifBlank { ownerDoc.getString("id") ?: "" } ?: ""
+
+                                if (ownerHid.isNotBlank()) {
+                                    completeRouting(ownerHid, Role.OWNER, rawEmail.substringBefore("@").ifBlank { "User" }, true)
+                                    return@addOnSuccessListener
+                                }
+
+                                // STAGE 4: Search households collection where memberIds contains uid
+                                Log.d("AUTH_DEBUG", "STAGE 4: Searching households collection where memberIds contains '$uid'.")
+                                db.collection("households").whereArrayContains("memberIds", uid).get()
+                                    .addOnSuccessListener { memberDocs ->
+                                        Log.d("AUTH_DEBUG", "STAGE 4 Result -> households where memberIds contains '$uid' count=${memberDocs.size()}")
+                                        val memberDoc = memberDocs.documents.firstOrNull()
+                                        val memberHid = memberDoc?.id?.ifBlank { memberDoc.getString("id") ?: "" } ?: ""
+                                        if (memberHid.isNotBlank()) {
+                                            val ownerId = memberDoc?.getString("ownerId") ?: ""
+                                            val isOwner = ownerId == uid
+                                            completeRouting(memberHid, if (isOwner) Role.OWNER else Role.MEMBER, rawEmail.substringBefore("@").ifBlank { "User" }, isOwner)
+                                            return@addOnSuccessListener
+                                        }
+
+                                        // STAGE 5: Search collectionGroup("members") by UID or email
+                                        Log.d("AUTH_DEBUG", "STAGE 5: Searching collectionGroup('members') by uid='$uid'.")
+                                        db.collectionGroup("members").whereEqualTo("uid", uid).get()
+                                            .addOnSuccessListener { memberGroupUidDocs ->
+                                                Log.d("AUTH_DEBUG", "STAGE 5a Result -> collectionGroup('members') where uid=='$uid' count=${memberGroupUidDocs.size()}")
+                                                val memberGroupDoc = memberGroupUidDocs.documents.firstOrNull { !it.getString("householdId").isNullOrBlank() }
+                                                val recoveredHid = memberGroupDoc?.getString("householdId")
+                                                if (!recoveredHid.isNullOrBlank()) {
+                                                    val name = memberGroupDoc.getString("name") ?: rawEmail.substringBefore("@").ifBlank { "User" }
+                                                    val roleStr = memberGroupDoc.getString("role") ?: "MEMBER"
+                                                    val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
+                                                    val canManage = memberGroupDoc.getBoolean("canManageHousehold") ?: false
+                                                    completeRouting(recoveredHid, role, name, canManage)
+                                                    return@addOnSuccessListener
+                                                }
+
+                                                db.collectionGroup("members").whereIn("email", listOf(rawEmail, lowerEmail).distinct()).get()
+                                                    .addOnSuccessListener { memberGroupEmailDocs ->
+                                                        Log.d("AUTH_DEBUG", "STAGE 5b Result -> collectionGroup('members') where email in $rawEmail count=${memberGroupEmailDocs.size()}")
+                                                        val emailMemberDoc = memberGroupEmailDocs.documents.firstOrNull { !it.getString("householdId").isNullOrBlank() }
+                                                        val recoveredEmailHid = emailMemberDoc?.getString("householdId")
+                                                        if (!recoveredEmailHid.isNullOrBlank()) {
+                                                            val name = emailMemberDoc.getString("name") ?: rawEmail.substringBefore("@").ifBlank { "User" }
+                                                            val roleStr = emailMemberDoc.getString("role") ?: "MEMBER"
+                                                            val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
+                                                            val canManage = emailMemberDoc.getBoolean("canManageHousehold") ?: false
+                                                            completeRouting(recoveredEmailHid, role, name, canManage)
+                                                        } else {
+                                                            retryOrFail()
+                                                        }
+                                                    }
+                                                    .addOnFailureListener { e ->
+                                                        Log.e("AUTH_DEBUG", "STAGE 5b Exception: ${e.message}", e)
+                                                        retryOrFail()
+                                                    }
+                                            }
+                                            .addOnFailureListener { e ->
+                                                Log.e("AUTH_DEBUG", "STAGE 5a Exception: ${e.message}", e)
+                                                retryOrFail()
+                                            }
+                                    }
+                                    .addOnFailureListener { e ->
+                                        Log.e("AUTH_DEBUG", "STAGE 4 Exception: ${e.message}", e)
+                                        retryOrFail()
+                                    }
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e("AUTH_DEBUG", "STAGE 3 Exception: ${e.message}", e)
+                                retryOrFail()
+                            }
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("AUTH_DEBUG", "STAGE 2 Exception: ${e.message}", e)
+                        retryOrFail()
+                    }
+            }
+            .addOnFailureListener { e ->
+                Log.e("AUTH_DEBUG", "STAGE 1 Exception on users/$uid: ${e.message}", e)
+                retryOrFail()
+            }
+    } ?: run {
+        retryOrFail()
     }
 }
 
@@ -291,7 +482,7 @@ fun AppUpdateDialog(
 }
 
 @Composable
-fun AuthScreen(onLoginSuccess: (UserProfile) -> Unit) {
+fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isSignUp by remember { mutableStateOf(false) }
@@ -394,11 +585,13 @@ fun AuthScreen(onLoginSuccess: (UserProfile) -> Unit) {
                                 db.collection("users").document(uid).set(userMap)
                                     .addOnSuccessListener {
                                         isLoading = false
-                                        onLoginSuccess(profile)
+                                        UserPreferences.saveUser(context, profile)
+                                        onAuthRouting(profile, AppState.ONBOARDING)
                                     }
                                     .addOnFailureListener {
                                         isLoading = false
-                                        onLoginSuccess(profile)
+                                        UserPreferences.saveUser(context, profile)
+                                        onAuthRouting(profile, AppState.ONBOARDING)
                                     }
                             } else {
                                 isLoading = false
@@ -409,59 +602,21 @@ fun AuthScreen(onLoginSuccess: (UserProfile) -> Unit) {
                     auth.signInWithEmailAndPassword(trimmedEmail, password)
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
-                                val user = task.result?.user
-                                val uid = user?.uid ?: ""
-
-                                // Fetch user profile from Firestore
-                                db.collection("users").document(uid).get()
-                                    .addOnSuccessListener { doc ->
-                                        val name = doc?.getString("name") ?: trimmedEmail.substringBefore("@")
-                                        val roleStr = doc?.getString("role") ?: "OWNER"
-                                        val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
-                                        val householdId = doc?.getString("householdId")
-                                        val canManage = doc?.getBoolean("canManageHousehold") ?: false
-
-                                        if (!householdId.isNullOrBlank()) {
-                                            isLoading = false
-                                            onLoginSuccess(UserProfile(uid, name, trimmedEmail, role, householdId, canManage))
-                                        } else {
-                                            // Fallback check: Search collectionGroup("members") for membership recovery
-                                            db.collectionGroup("members").whereEqualTo("email", trimmedEmail).get()
-                                                .addOnSuccessListener { memberDocs ->
-                                                    isLoading = false
-                                                    val foundDoc = memberDocs.documents.firstOrNull()
-                                                    val recoveredHid = foundDoc?.getString("householdId")
-                                                    val recoveredRoleStr = foundDoc?.getString("role") ?: "MEMBER"
-                                                    val recoveredRole = try { Role.valueOf(recoveredRoleStr) } catch (_: Exception) { Role.MEMBER }
-                                                    val recoveredCanManage = foundDoc?.getBoolean("canManageHousehold") ?: false
-
-                                                    val profile = UserProfile(uid, name, trimmedEmail, if (recoveredHid != null) recoveredRole else role, recoveredHid, recoveredCanManage)
-                                                    if (recoveredHid != null) {
-                                                        db.collection("users").document(uid).set(
-                                                            hashMapOf(
-                                                                "uid" to uid,
-                                                                "name" to name,
-                                                                "email" to trimmedEmail,
-                                                                "role" to recoveredRole.name,
-                                                                "householdId" to recoveredHid,
-                                                                "canManageHousehold" to recoveredCanManage
-                                                            )
-                                                        )
-                                                    }
-                                                    onLoginSuccess(profile)
-                                                }
-                                                .addOnFailureListener {
-                                                    isLoading = false
-                                                    val profile = UserProfile(uid, name, trimmedEmail, role, null, false)
-                                                    onLoginSuccess(profile)
-                                                }
-                                        }
-                                    }
-                                    .addOnFailureListener {
+                                val firebaseUser = task.result?.user
+                                if (firebaseUser != null) {
+                                    handleUserAuthSuccess(
+                                        uid = firebaseUser.uid,
+                                        email = trimmedEmail,
+                                        db = db,
+                                        context = context
+                                    ) { profile, targetState ->
                                         isLoading = false
-                                        val profile = UserProfile(uid, trimmedEmail.substringBefore("@"), trimmedEmail, Role.OWNER, null, false)
-                                        onLoginSuccess(profile)
+                                        onAuthRouting(profile, targetState)
                                     }
+                                } else {
+                                    isLoading = false
+                                    Toast.makeText(context, "Login failed: User record null.", Toast.LENGTH_LONG).show()
+                                }
                             } else {
                                 isLoading = false
                                 Toast.makeText(context, "Error: ${task.exception?.localizedMessage}", Toast.LENGTH_LONG).show()
@@ -477,7 +632,7 @@ fun AuthScreen(onLoginSuccess: (UserProfile) -> Unit) {
             if (isLoading) {
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
             } else {
-                Text(if (isSignUp) "Sign Up" else "Sign In", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(if (isSignUp) "Sign In" else "Sign In", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
         
@@ -493,7 +648,11 @@ fun AuthScreen(onLoginSuccess: (UserProfile) -> Unit) {
 }
 
 @Composable
-fun OnboardingScreen(user: UserProfile, onHouseholdJoined: (UserProfile) -> Unit) {
+fun OnboardingScreen(
+    user: UserProfile, 
+    onHouseholdJoined: (UserProfile) -> Unit,
+    onSignOut: () -> Unit = {}
+) {
     var showLinkInput by remember { mutableStateOf(false) }
     var inviteLink by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -501,6 +660,7 @@ fun OnboardingScreen(user: UserProfile, onHouseholdJoined: (UserProfile) -> Unit
 
     fun saveHouseholdToUser(updatedUser: UserProfile) {
         UserPreferences.saveUser(context, updatedUser)
+
         val memberMap = hashMapOf(
             "uid" to updatedUser.uid,
             "name" to updatedUser.name,
@@ -511,13 +671,24 @@ fun OnboardingScreen(user: UserProfile, onHouseholdJoined: (UserProfile) -> Unit
         )
 
         // 1. Save to users/{uid}
-        db.collection("users").document(updatedUser.uid).set(memberMap)
+        db.collection("users").document(updatedUser.uid).set(memberMap, SetOptions.merge())
 
-        // 2. Save to households/{householdId}/members/{uid}
-        updatedUser.householdId?.let { hid ->
+        // 2. Save to households/{householdId} root document
+        val hid = updatedUser.householdId
+        if (!hid.isNullOrBlank()) {
+            val householdRootMap = hashMapOf(
+                "id" to hid,
+                "ownerId" to updatedUser.uid,
+                "ownerEmail" to updatedUser.email,
+                "memberIds" to listOf(updatedUser.uid),
+                "memberEmails" to listOf(updatedUser.email)
+            )
+            db.collection("households").document(hid).set(householdRootMap, SetOptions.merge())
+
+            // 3. Save to households/{householdId}/members/{uid}
             db.collection("households").document(hid)
                 .collection("members").document(updatedUser.uid)
-                .set(memberMap)
+                .set(memberMap, SetOptions.merge())
         }
 
         onHouseholdJoined(updatedUser)
@@ -531,12 +702,13 @@ fun OnboardingScreen(user: UserProfile, onHouseholdJoined: (UserProfile) -> Unit
         Text("Join a Household", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Create a new pantry or join an existing one using an invite link.", 
+            text = "Logged in as ${user.email}\nCreate a new household, join an existing one, or enter your Household ID.", 
             color = Color.Gray, 
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            fontSize = 13.sp
         )
         
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(36.dp))
         
         AnimatedContent(targetState = showLinkInput, label = "OnboardingState") { isInputState ->
             if (!isInputState) {
@@ -560,7 +732,7 @@ fun OnboardingScreen(user: UserProfile, onHouseholdJoined: (UserProfile) -> Unit
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1E))
                     ) {
-                        Text("I Have an Invite Link", color = Color(0xFF007AFF), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("Enter Household ID / Invite Link", color = Color(0xFF007AFF), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
@@ -568,7 +740,7 @@ fun OnboardingScreen(user: UserProfile, onHouseholdJoined: (UserProfile) -> Unit
                     OutlinedTextField(
                         value = inviteLink,
                         onValueChange = { inviteLink = it },
-                        placeholder = { Text("Paste link here...", color = Color.Gray) },
+                        placeholder = { Text("Paste link or enter Household ID...", color = Color.Gray) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         singleLine = true,
@@ -595,28 +767,34 @@ fun OnboardingScreen(user: UserProfile, onHouseholdJoined: (UserProfile) -> Unit
                         
                         Button(
                             onClick = {
-                                val linkTrimmed = inviteLink.trim()
-                                if (linkTrimmed.startsWith("app://pantry/join/")) {
-                                    val extractedId = linkTrimmed.substringAfterLast("/")
-                                    if (extractedId.length > 5) { 
-                                        val updatedUser = user.copy(role = Role.MEMBER, householdId = extractedId)
-                                        saveHouseholdToUser(updatedUser)
-                                    } else {
-                                        Toast.makeText(context, "Invalid household ID.", Toast.LENGTH_SHORT).show()
-                                    }
+                                val rawInput = inviteLink.trim()
+                                val extractedId = when {
+                                    rawInput.startsWith("app://pantry/join/") -> rawInput.substringAfterLast("/")
+                                    else -> rawInput
+                                }
+                                if (extractedId.isNotBlank()) { 
+                                    val updatedUser = user.copy(role = Role.MEMBER, householdId = extractedId)
+                                    saveHouseholdToUser(updatedUser)
                                 } else {
-                                    Toast.makeText(context, "Please paste a valid invite link.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Please enter a valid Household ID or invite link.", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             modifier = Modifier.weight(1f).height(56.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
                         ) {
-                            Text("Join", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Connect", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Switch Account / Sign Out Button directly on Onboarding Screen
+        TextButton(onClick = { onSignOut() }) {
+            Text("Sign Out / Switch Account", color = Color(0xFFFF3B30), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
