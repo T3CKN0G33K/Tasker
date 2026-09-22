@@ -430,7 +430,7 @@ fun PantryItemCard(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "$${String.format(Locale.US, "%.2f", item.price)} / ${item.unit.take(5)}",
-                            color = Color(0xFF34C759),
+                            color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -454,7 +454,7 @@ fun PantryItemCard(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = formattedQty,
-                            color = if (isLowStock) Color(0xFFFF3B30) else textMain,
+                            color = Color.White,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
