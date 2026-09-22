@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
@@ -17,13 +18,36 @@ import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import org.json.JSONObject
+import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
+
+data class SemVersion(val major: Int, val minor: Int, val patch: Int) : Comparable<SemVersion> {
+    override fun compareTo(other: SemVersion): Int {
+        if (this.major != other.major) return this.major.compareTo(other.major)
+        if (this.minor != other.minor) return this.minor.compareTo(other.minor)
+        return this.patch.compareTo(other.patch)
+    }
+
+    override fun toString(): String {
+        return "$major.$minor.$patch"
+    }
+
+    companion object {
+        fun parse(versionStr: String): SemVersion {
+            val clean = versionStr.trim().removePrefix("v").removePrefix("V").substringBefore("-")
+            val parts = clean.split(".").mapNotNull { it.toIntOrNull() }
+            val major = parts.getOrNull(0) ?: 0
+            val minor = parts.getOrNull(1) ?: 0
+            val patch = parts.getOrNull(2) ?: 0
+            return SemVersion(major, minor, patch)
+        }
+    }
+}
 
 data class UpdateInfo(
     val latestVersionName: String,
@@ -33,44 +57,76 @@ data class UpdateInfo(
 
 object AppUpdateManager {
 
+    private const val TAG = "AppUpdateManager"
     private val mainHandler = Handler(Looper.getMainLooper())
 
     fun checkGitHubForUpdates(
-        currentVersion: String,
-        onUpdateAvailable: (String) -> Unit
+        currentVersionStr: String,
+        onUpdateAvailable: (UpdateInfo) -> Unit
     ) {
+        val currentSemVer = SemVersion.parse(currentVersionStr)
         val client = OkHttpClient()
+
+        // Query all GitHub releases array to parse semantic versions
         val request = Request.Builder()
-            .url("https://api.github.com/repos/T3CKN0G33K/Tasker/releases/latest")
+            .url("https://api.github.com/repos/T3CKN0G33K/Tasker/releases")
             .header("Accept", "application/vnd.github.v3+json")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                e.printStackTrace()
+                Log.e(TAG, "Failed to query GitHub releases: ${e.message}", e)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                response.body?.string()?.let { responseBody ->
-                    try {
-                        val json = JSONObject(responseBody)
-                        val tagName = json.getString("tag_name") // e.g., "v1.10"
-                        val cleanTag = tagName.removePrefix("v") // e.g., "1.10"
-                        
-                        val assets = json.getJSONArray("assets")
-                        if (assets.length() > 0) {
-                            val downloadUrl = assets.getJSONObject(0).getString("browser_download_url")
-                            
-                            // If the GitHub tag doesn't match our app version, an update is available
-                            if (cleanTag != currentVersion) {
-                                CoroutineScope(Dispatchers.Main).launch {
-                                    onUpdateAvailable(downloadUrl) // Pass the URL to your existing download function
+                val bodyStr = response.body?.string() ?: ""
+                try {
+                    val releasesArray = JSONArray(bodyStr)
+                    var highestReleaseSemVer: SemVersion? = null
+                    var highestApkUrl: String? = null
+                    var highestReleaseNotes: String? = null
+                    var highestTagName: String? = null
+
+                    for (i in 0 until releasesArray.length()) {
+                        val releaseObj = releasesArray.getJSONObject(i)
+                        val isDraft = releaseObj.optBoolean("draft", false)
+                        if (isDraft) continue
+
+                        val tagName = releaseObj.optString("tag_name", "")
+                        val semVer = SemVersion.parse(tagName)
+                        val assets = releaseObj.optJSONArray("assets")
+
+                        if (assets != null && assets.length() > 0) {
+                            val downloadUrl = assets.getJSONObject(0).optString("browser_download_url", "")
+                            val notes = releaseObj.optString("body", "New GitHub release available!")
+
+                            if (downloadUrl.isNotBlank()) {
+                                if (highestReleaseSemVer == null || semVer > highestReleaseSemVer) {
+                                    highestReleaseSemVer = semVer
+                                    highestApkUrl = downloadUrl
+                                    highestReleaseNotes = if (notes.isNotBlank()) notes else "Release $tagName update"
+                                    highestTagName = tagName
                                 }
                             }
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
                     }
+
+                    if (highestReleaseSemVer != null && highestApkUrl != null) {
+                        Log.d(TAG, "Highest GitHub Release: $highestTagName (SemVer: $highestReleaseSemVer), Current: v$currentVersionStr (SemVer: $currentSemVer)")
+                        
+                        if (highestReleaseSemVer > currentSemVer) {
+                            val updateInfo = UpdateInfo(
+                                latestVersionName = highestTagName ?: "v$highestReleaseSemVer",
+                                apkUrl = highestApkUrl,
+                                releaseNotes = highestReleaseNotes ?: "New update available!"
+                            )
+                            CoroutineScope(Dispatchers.Main).launch {
+                                onUpdateAvailable(updateInfo)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing GitHub releases: ${e.message}", e)
                 }
             }
         })
@@ -85,17 +141,12 @@ object AppUpdateManager {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
         } catch (_: Exception) { "1.0" }
 
-        checkGitHubForUpdates(currentVersionName) { downloadUrl ->
-            val info = UpdateInfo(
-                latestVersionName = "GitHub Release",
-                apkUrl = downloadUrl,
-                releaseNotes = "New GitHub release available!"
-            )
-            onUpdateAvailable(info)
+        checkGitHubForUpdates(currentVersionName) { updateInfo ->
+            onUpdateAvailable(updateInfo)
         }
 
         if (forceShowToast) {
-            Toast.makeText(context, "Checking GitHub for updates (v$currentVersionName)...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Checking GitHub for latest release (v$currentVersionName)...", Toast.LENGTH_SHORT).show()
         }
     }
 
