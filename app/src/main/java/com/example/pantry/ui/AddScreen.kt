@@ -4,8 +4,10 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -20,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -45,6 +48,94 @@ import java.io.IOException
 import java.util.UUID
 
 @Composable
+fun GlassStepperButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    isPlus: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val buttonBg = if (isPlus) {
+        Color(0xFF007AFF).copy(alpha = 0.40f) // Vibrant translucent blue tint for (+)
+    } else {
+        Color.White.copy(alpha = 0.15f) // Subtle translucent grey/white tint for (-)
+    }
+
+    val buttonBorder = Brush.verticalGradient(
+        colors = if (isPlus) {
+            listOf(
+                Color.White.copy(alpha = 0.70f),
+                Color(0xFF007AFF).copy(alpha = 0.35f)
+            )
+        } else {
+            listOf(
+                Color.White.copy(alpha = 0.50f),
+                Color.White.copy(alpha = 0.15f)
+            )
+        }
+    )
+
+    // Outer Box: Size -> Clip -> Clickable order ensures 100% full-surface touch target
+    Box(
+        modifier = modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = true, radius = 22.dp)
+            ) { onClick() }
+            .background(buttonBg)
+            .border(
+                width = 1.dp,
+                brush = buttonBorder,
+                shape = CircleShape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        // Native Glass Layer (Set to non-clickable so it doesn't intercept touch events from parent Box)
+        AndroidView(
+            factory = { context ->
+                LiquidGlassView(context).apply {
+                    cornerRadius = context.resources.displayMetrics.density * 22f
+                    enableBackdropBlur = true
+                    enableChromaticAberration = true
+                    enableChromaticDispersion = true
+                    enableEdgeHighlight = true
+                    edgeHighlightBorderWidth = 1.0f
+                    edgeHighlightOpacity = 100f
+                    bevelWidth = 12f
+                    refractionHeight = 18f
+                    dispersionStrength = 0.10f
+                    material = GlassMaterial.CLEAR
+                    glassTint = if (isPlus) {
+                        android.graphics.Color.argb(50, 0, 122, 255)
+                    } else {
+                        android.graphics.Color.argb(25, 255, 255, 255)
+                    }
+                    useShaderPipeline = false
+                    
+                    // Disable native View touch listeners so parent Compose Box handles clicks reliably!
+                    isClickable = false
+                    isFocusable = false
+                    isEnabled = false
+                }
+            },
+            update = { glassView ->
+                glassView.invalidate()
+            },
+            modifier = Modifier.matchParentSize()
+        )
+
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.White, // Crisp white icons for maximum contrast!
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
 fun GlassHeroButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -65,16 +156,20 @@ fun GlassHeroButton(
             .fillMaxWidth()
             .height(56.dp)
             .clip(RoundedCornerShape(16.dp))
+            .clickable(
+                enabled = enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = true)
+            ) { onClick() }
             .background(buttonBg)
             .border(
                 width = 1.5.dp,
                 brush = buttonBorder,
                 shape = RoundedCornerShape(16.dp)
-            )
-            .clickable(enabled = enabled) { onClick() },
+            ),
         contentAlignment = Alignment.Center
     ) {
-        // Native Chromatic Dispersion Glass Effect Layer
+        // Native Chromatic Dispersion Glass Effect Layer (Non-clickable layer)
         AndroidView(
             factory = { context ->
                 LiquidGlassView(context).apply {
@@ -91,6 +186,10 @@ fun GlassHeroButton(
                     material = GlassMaterial.CLEAR
                     glassTint = android.graphics.Color.argb(40, 0, 122, 255)
                     useShaderPipeline = false
+                    
+                    isClickable = false
+                    isFocusable = false
+                    isEnabled = false
                 }
             },
             update = { glassView ->
@@ -127,8 +226,6 @@ fun AddScreen(
     val categories = listOf("Dry Goods", "Beverages", "Pet Care", "Household")
 
     val textMain = if (isDarkMode) Color.White else Color.Black
-    val textSub = if (isDarkMode) Color.White.copy(alpha = 0.65f) else Color(0xFF6C6C70)
-    val stepperBg = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E5EA)
 
     fun startBarcodeScan() {
         try {
@@ -322,7 +419,7 @@ fun AddScreen(
             }
         }
 
-        // 5. Quantity Control Stepper (Upgraded to GlassCard)
+        // 5. Quantity Control Stepper (Upgraded with 100% full-surface responsive Glass Stepper Buttons!)
         GlassCard(isDarkMode = isDarkMode) {
             Row(
                 modifier = Modifier
@@ -331,38 +428,44 @@ fun AddScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Quantity", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Quantity", 
+                    color = Color.White, 
+                    fontSize = 18.sp, 
+                    fontWeight = FontWeight.SemiBold
+                )
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    IconButton(
+                    GlassStepperButton(
+                        icon = Icons.Default.Remove,
+                        contentDescription = "Decrease Quantity",
                         onClick = { if (quantity > 1) quantity-- },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(stepperBg, RoundedCornerShape(10.dp))
-                    ) {
-                        Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = Color.White)
-                    }
+                        isPlus = false
+                    )
+
                     Text(
                         text = quantity.toString(), 
                         color = Color.White, 
                         fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(min = 32.dp)
                     )
-                    IconButton(
+
+                    GlassStepperButton(
+                        icon = Icons.Default.Add,
+                        contentDescription = "Increase Quantity",
                         onClick = { quantity++ },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(Color(0xFF007AFF), RoundedCornerShape(10.dp))
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Increase", tint = Color.White)
-                    }
+                        isPlus = true
+                    )
                 }
             }
         }
 
-        // 6. Low Stock Threshold Stepper (Upgraded to GlassCard)
+        // 6. Low Stock Threshold Stepper (Upgraded with 100% full-surface responsive Glass Stepper Buttons!)
         GlassCard(isDarkMode = isDarkMode) {
             Row(
                 modifier = Modifier
@@ -371,36 +474,46 @@ fun AddScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Low Stock Threshold", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Triggers restock alert when quantity ≤ this number", color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp)
+                Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Text(
+                        text = "Low Stock Threshold", 
+                        color = Color.White, 
+                        fontSize = 18.sp, 
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Triggers restock alert when quantity ≤ this number", 
+                        color = Color.White.copy(alpha = 0.65f), 
+                        fontSize = 11.sp
+                    )
                 }
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    IconButton(
+                    GlassStepperButton(
+                        icon = Icons.Default.Remove,
+                        contentDescription = "Decrease Threshold",
                         onClick = { if (lowStockThreshold > 0) lowStockThreshold-- },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(stepperBg, RoundedCornerShape(10.dp))
-                    ) {
-                        Icon(Icons.Default.Remove, contentDescription = "Decrease Threshold", tint = Color.White)
-                    }
+                        isPlus = false
+                    )
+
                     Text(
                         text = lowStockThreshold.toString(), 
                         color = Color.White, 
                         fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(min = 32.dp)
                     )
-                    IconButton(
+
+                    GlassStepperButton(
+                        icon = Icons.Default.Add,
+                        contentDescription = "Increase Threshold",
                         onClick = { lowStockThreshold++ },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(Color(0xFF007AFF), RoundedCornerShape(10.dp))
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Increase Threshold", tint = Color.White)
-                    }
+                        isPlus = true
+                    )
                 }
             }
         }
