@@ -1,6 +1,12 @@
 package com.example.pantry.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,6 +17,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -19,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -55,13 +63,12 @@ fun PantryScreen(
     onItemDelete: (String) -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchExpanded by remember { mutableStateOf(false) }
     var selectedCategoryFilter by remember { mutableStateOf("All") }
     var itemToEdit by remember { mutableStateOf<PantryItem?>(null) }
 
-    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
-    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
     val textMain = if (isDarkMode) Color.White else Color.Black
-    val textSub = if (isDarkMode) Color.Gray else Color(0xFF6C6C70)
+    val textSub = if (isDarkMode) Color.LightGray else Color(0xFF6C6C70)
 
     val categoryList = remember(items) {
         listOf("All") + items.map { it.category }.distinct().filter { it.isNotBlank() }
@@ -86,15 +93,16 @@ fun PantryScreen(
         }
     }
 
+    // Unblock Background -> Color.Transparent so root dynamic gradient shines through!
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(screenBg)
+            .background(Color.Transparent)
     ) {
         // LAYER 1: Scrolling Content
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 110.dp, bottom = 120.dp, start = 16.dp, end = 16.dp),
+            contentPadding = PaddingValues(top = 72.dp, bottom = 140.dp, start = 16.dp, end = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
@@ -107,12 +115,8 @@ fun PantryScreen(
                         modifier = Modifier.padding(start = 8.dp)
                     )
 
-                    // Low Stock Restock Budget Estimate Card
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = cardBg)
-                    ) {
+                    // Low Stock Restock Budget Estimate Card (Upgraded to GlassCard)
+                    GlassCard(isDarkMode = isDarkMode) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -125,7 +129,7 @@ fun PantryScreen(
                                     modifier = Modifier
                                         .size(42.dp)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.2f) else Color(0xFF34C759).copy(alpha = 0.2f)),
+                                        .background(if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.25f) else Color(0xFF34C759).copy(alpha = 0.25f)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
@@ -150,7 +154,7 @@ fun PantryScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.2f) else if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA))
+                                    .background(if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.25f) else if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E5EA))
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
@@ -163,7 +167,7 @@ fun PantryScreen(
                         }
                     }
 
-                    // Category Filter Chips Bar
+                    // Category Filter Chips Bar (Frosted Glass Pills)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -172,10 +176,16 @@ fun PantryScreen(
                     ) {
                         categoryList.take(5).forEach { category ->
                             val isSelected = selectedCategoryFilter == category
+                            val chipBg = if (isSelected) Color(0xFF007AFF) else if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.70f)
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(20.dp))
-                                    .background(if (isSelected) Color(0xFF007AFF) else cardBg)
+                                    .background(chipBg)
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isSelected) Color(0xFF007AFF) else if (isDarkMode) Color.White.copy(alpha = 0.20f) else Color.White,
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
                                     .clickable { selectedCategoryFilter = category }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
@@ -220,47 +230,110 @@ fun PantryScreen(
             }
         }
 
-        // LAYER 2: Frosted Sticky Glass Search Header
+        // LAYER 2: Sleek Floating Glass Search Button / Expanded Liquid Glass Search Input (Top End)
         Box(
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 12.dp, end = 16.dp, start = 16.dp)
         ) {
-            NativeLiquidGlass(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(if (isDarkMode) Color.Black.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.65f)),
-                blurRadius = 30.dp,
-                shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
-                isDarkTheme = isDarkMode
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(top = 8.dp, bottom = 12.dp, start = 16.dp, end = 16.dp)
-                    .height(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (isDarkMode) Color(0xFF767680).copy(alpha = 0.24f) else Color(0xFF767680).copy(alpha = 0.12f)),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(Icons.Default.Search, contentDescription = "Search", tint = textSub, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = textMain, fontSize = 16.sp),
-                    decorationBox = { innerTextField ->
-                        if (searchQuery.isEmpty()) {
-                            Text("Search Pantry", color = textSub, fontSize = 16.sp)
+            AnimatedContent(
+                targetState = isSearchExpanded,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
+                },
+                label = "SearchExpandTransition"
+            ) { expanded ->
+                if (expanded) {
+                    // Expanded Liquid Glass Search Pill Input
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.75f))
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.verticalGradient(
+                                    colors = if (isDarkMode) {
+                                        listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.12f))
+                                    } else {
+                                        listOf(Color.White, Color.White.copy(alpha = 0.50f))
+                                    }
+                                ),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = textSub,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = textMain, fontSize = 16.sp),
+                            decorationBox = { innerTextField ->
+                                if (searchQuery.isEmpty()) {
+                                    Text("Search Pantry...", color = textSub, fontSize = 16.sp)
+                                }
+                                innerTextField()
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(
+                            onClick = {
+                                if (searchQuery.isNotEmpty()) {
+                                    searchQuery = ""
+                                } else {
+                                    isSearchExpanded = false
+                                }
+                            },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Close Search",
+                                tint = textSub,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
-                        innerTextField()
-                    },
-                    modifier = Modifier.weight(1f)
-                )
+                    }
+                } else {
+                    // Collapsed Sleek Circular Liquid Glass Search Button
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.75f))
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.verticalGradient(
+                                    colors = if (isDarkMode) {
+                                        listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.12f))
+                                    } else {
+                                        listOf(Color.White, Color.White.copy(alpha = 0.50f))
+                                    }
+                                ),
+                                shape = CircleShape
+                            )
+                            .clickable { isSearchExpanded = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = textMain,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -292,140 +365,142 @@ fun PantryItemCard(
     val isLowStock = item.quantity <= item.lowStockThreshold
     val formattedQty = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else String.format(Locale.US, "%.2f", item.quantity)
 
-    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
     val textMain = if (isDarkMode) Color.White else Color.Black
-    val pillBg = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
+    val pillBg = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E5EA)
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(cardBg)
-            .clickable { onEdit() }
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+    // Upgraded Outer Container to Frosted Glass Card Shell
+    GlassCard(
+        isDarkMode = isDarkMode,
+        modifier = Modifier.clickable { onEdit() }
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Category Tag
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF007AFF).copy(alpha = 0.2f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = item.category.uppercase(),
-                            color = Color(0xFF007AFF),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    // Low Stock Restock Warning Badge
-                    if (isLowStock) {
+                        // Category Tag
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(Color(0xFFFF3B30).copy(alpha = 0.2f))
+                                .background(Color(0xFF007AFF).copy(alpha = 0.25f))
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = "LOW STOCK",
-                                color = Color(0xFFFF3B30),
+                                text = item.category.uppercase(),
+                                color = Color(0xFF007AFF),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
+
+                        // Low Stock Restock Warning Badge
+                        if (isLowStock) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color(0xFFFF3B30).copy(alpha = 0.25f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "LOW STOCK",
+                                    color = Color(0xFFFF3B30),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(text = item.name, color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    
+                    // Unit Price Tag
+                    if (item.price > 0) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "$${String.format(Locale.US, "%.2f", item.price)} / ${item.unit.take(5)}",
+                            color = Color(0xFF34C759),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(text = item.name, color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                
-                // Unit Price Tag
-                if (item.price > 0) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "$${String.format(Locale.US, "%.2f", item.price)} / ${item.unit.take(5)}",
-                        color = Color(0xFF34C759),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                // Stepper Quantity Controls
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    IconButton(
+                        onClick = { if (item.quantity > 0) onQuantityChange((item.quantity - 0.25).coerceAtLeast(0.0)) },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(pillBg, CircleShape)
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = textMain, modifier = Modifier.size(16.dp))
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = formattedQty,
+                            color = if (isLowStock) Color(0xFFFF3B30) else textMain,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(text = item.unit, color = Color.Gray, fontSize = 10.sp)
+                    }
+
+                    IconButton(
+                        onClick = { onQuantityChange(item.quantity + 1.0) },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFF007AFF), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase", tint = Color.White, modifier = Modifier.size(16.dp))
+                    }
                 }
             }
 
-            // Stepper Quantity Controls
+            // Quick Fractional Fill Level Selector Pills
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                IconButton(
-                    onClick = { if (item.quantity > 0) onQuantityChange((item.quantity - 0.25).coerceAtLeast(0.0)) },
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(pillBg, CircleShape)
-                ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = textMain, modifier = Modifier.size(16.dp))
-                }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = formattedQty,
-                        color = if (isLowStock) Color(0xFFFF3B30) else textMain,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(text = item.unit, color = Color.Gray, fontSize = 10.sp)
-                }
-
-                IconButton(
-                    onClick = { onQuantityChange(item.quantity + 1.0) },
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(Color(0xFF007AFF), CircleShape)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Increase", tint = Color.White, modifier = Modifier.size(16.dp))
-                }
-            }
-        }
-
-        // Quick Fractional Fill Level Selector Pills
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            val fillLevels = listOf(
-                "1/4 (25%)" to 0.25,
-                "1/2 (50%)" to 0.50,
-                "3/4 (75%)" to 0.75,
-                "Full (1.0)" to 1.00
-            )
-            fillLevels.forEach { (label, value) ->
-                val isCurrent = abs(item.quantity - value) < 0.05
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isCurrent) Color(0xFF007AFF) else pillBg)
-                        .clickable { onQuantityChange(value) }
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = label,
-                        color = if (isCurrent) Color.White else if (isDarkMode) Color.Gray else Color(0xFF6C6C70),
-                        fontSize = 10.sp,
-                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
-                    )
+                val fillLevels = listOf(
+                    "1/4 (25%)" to 0.25,
+                    "1/2 (50%)" to 0.50,
+                    "3/4 (75%)" to 0.75,
+                    "Full (1.0)" to 1.00
+                )
+                fillLevels.forEach { (label, value) ->
+                    val isCurrent = abs(item.quantity - value) < 0.05
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isCurrent) Color(0xFF007AFF) else pillBg)
+                            .clickable { onQuantityChange(value) }
+                            .padding(vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (isCurrent) Color.White else if (isDarkMode) Color.LightGray else Color(0xFF6C6C70),
+                            fontSize = 10.sp,
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
                 }
             }
         }
