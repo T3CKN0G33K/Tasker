@@ -2,6 +2,7 @@ package com.example.pantry.ui
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -17,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -24,6 +26,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.example.liquidglass.GlassMaterial
+import com.example.liquidglass.LiquidGlassView
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -38,6 +43,72 @@ import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
 import java.util.UUID
+
+@Composable
+fun GlassHeroButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isDarkMode: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    val buttonBg = Color(0xFF007AFF).copy(alpha = 0.35f)
+    val buttonBorder = Brush.verticalGradient(
+        colors = listOf(
+            Color.White.copy(alpha = 0.65f),
+            Color(0xFF007AFF).copy(alpha = 0.30f)
+        )
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(buttonBg)
+            .border(
+                width = 1.5.dp,
+                brush = buttonBorder,
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable(enabled = enabled) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        // Native Chromatic Dispersion Glass Effect Layer
+        AndroidView(
+            factory = { context ->
+                LiquidGlassView(context).apply {
+                    cornerRadius = context.resources.displayMetrics.density * 16f
+                    enableBackdropBlur = true
+                    enableChromaticAberration = true
+                    enableChromaticDispersion = true
+                    enableEdgeHighlight = true
+                    edgeHighlightBorderWidth = 1.0f
+                    edgeHighlightOpacity = 100f
+                    bevelWidth = 20f
+                    refractionHeight = 28f
+                    dispersionStrength = 0.12f
+                    material = GlassMaterial.CLEAR
+                    glassTint = android.graphics.Color.argb(40, 0, 122, 255)
+                    useShaderPipeline = false
+                }
+            },
+            update = { glassView ->
+                glassView.invalidate()
+            },
+            modifier = Modifier.matchParentSize()
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            content = content
+        )
+    }
+}
 
 @Composable
 fun AddScreen(
@@ -55,11 +126,9 @@ fun AddScreen(
     val context = LocalContext.current
     val categories = listOf("Dry Goods", "Beverages", "Pet Care", "Household")
 
-    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
-    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
     val textMain = if (isDarkMode) Color.White else Color.Black
-    val textSub = if (isDarkMode) Color.Gray else Color(0xFF6C6C70)
-    val stepperBg = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
+    val textSub = if (isDarkMode) Color.White.copy(alpha = 0.65f) else Color(0xFF6C6C70)
+    val stepperBg = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E5EA)
 
     fun startBarcodeScan() {
         try {
@@ -118,13 +187,14 @@ fun AddScreen(
         }
     }
 
+    // Unblock Background -> Color.Transparent for edge-to-edge ambient gradient!
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(screenBg)
+            .background(Color.Transparent)
             .verticalScroll(rememberScrollState())
-            .padding(top = 64.dp, bottom = 120.dp, start = 20.dp, end = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(28.dp)
+            .padding(top = 64.dp, bottom = 140.dp, start = 20.dp, end = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         Text(
             text = "Add Item",
@@ -133,185 +203,204 @@ fun AddScreen(
             fontWeight = FontWeight.Bold
         )
 
-        // Walmart Barcode Scanner Button
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .clickable(enabled = !isScanning) { startBarcodeScan() },
-            color = Color(0xFF007AFF)
+        // 1. Walmart Barcode Scanner Hero Glass Button with Chromatic Dispersion
+        GlassHeroButton(
+            onClick = { startBarcodeScan() },
+            enabled = !isScanning,
+            isDarkMode = isDarkMode
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                if (isScanning) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Looking up scanned product...", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                } else {
-                    Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan Barcode", tint = Color.White, modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Scan Walmart / Grocery Barcode", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                }
+            if (isScanning) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Looking up scanned product...", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan Barcode", tint = Color.White, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Scan Walmart / Grocery Barcode", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        // Item Name Input
+        // 2. Item Name Input (Frosted Glass Input Shell)
         OutlinedTextField(
             value = itemName,
             onValueChange = { 
                 itemName = it
                 isSaved = false
             },
-            placeholder = { Text("Item Name", color = textSub) },
-            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Item Name", color = Color.White.copy(alpha = 0.60f)) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        colors = if (isDarkMode) listOf(Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.10f)) else listOf(Color.White, Color.White.copy(alpha = 0.50f))
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                ),
             shape = RoundedCornerShape(14.dp),
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = cardBg,
-                unfocusedContainerColor = cardBg,
+                focusedContainerColor = if (isDarkMode) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.70f),
+                unfocusedContainerColor = if (isDarkMode) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.70f),
                 focusedBorderColor = Color(0xFF007AFF),
                 unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = textMain,
-                unfocusedTextColor = textMain,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
                 cursorColor = Color(0xFF007AFF)
             )
         )
 
-        // Item Unit Price Input
+        // 3. Item Unit Price Input (Frosted Glass Input Shell)
         OutlinedTextField(
             value = priceText,
             onValueChange = { priceText = it },
-            placeholder = { Text("Unit Price ($ e.g. 6.98)", color = textSub) },
-            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Unit Price ($ e.g. 6.98)", color = Color.White.copy(alpha = 0.60f)) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        colors = if (isDarkMode) listOf(Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.10f)) else listOf(Color.White, Color.White.copy(alpha = 0.50f))
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                ),
             shape = RoundedCornerShape(14.dp),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = cardBg,
-                unfocusedContainerColor = cardBg,
+                focusedContainerColor = if (isDarkMode) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.70f),
+                unfocusedContainerColor = if (isDarkMode) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.70f),
                 focusedBorderColor = Color(0xFF007AFF),
                 unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = textMain,
-                unfocusedTextColor = textMain,
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
                 cursorColor = Color(0xFF007AFF)
             )
         )
 
-        // Category Selector
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Category", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+        // 4. Category Selector (Upgraded to GlassCard)
+        GlassCard(isDarkMode = isDarkMode) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                categories.forEach { category ->
-                    val isSelected = selectedCategory == category
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) Color(0xFF007AFF) else cardBg)
-                            .clickable { selectedCategory = category },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = category,
-                            color = if (isSelected) Color.White else textSub,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            textAlign = TextAlign.Center
-                        )
+                Text("Category", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    categories.forEach { category ->
+                        val isSelected = selectedCategory == category
+                        val chipBg = if (isSelected) Color(0xFF007AFF) else if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.60f)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(chipBg)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isSelected) Color(0xFF007AFF) else Color.White.copy(alpha = 0.20f),
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable { selectedCategory = category },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = category,
+                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.75f),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
         }
 
-        // Quantity Control Stepper
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(cardBg)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("Quantity", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        // 5. Quantity Control Stepper (Upgraded to GlassCard)
+        GlassCard(isDarkMode = isDarkMode) {
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(
-                    onClick = { if (quantity > 1) quantity-- },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(stepperBg, RoundedCornerShape(10.dp))
+                Text("Quantity", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = textMain)
-                }
-                Text(
-                    text = quantity.toString(), 
-                    color = textMain, 
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(
-                    onClick = { quantity++ },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(Color(0xFF007AFF), RoundedCornerShape(10.dp))
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Increase", tint = Color.White)
+                    IconButton(
+                        onClick = { if (quantity > 1) quantity-- },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(stepperBg, RoundedCornerShape(10.dp))
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = Color.White)
+                    }
+                    Text(
+                        text = quantity.toString(), 
+                        color = Color.White, 
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(
+                        onClick = { quantity++ },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(Color(0xFF007AFF), RoundedCornerShape(10.dp))
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase", tint = Color.White)
+                    }
                 }
             }
         }
 
-        // Low Stock Threshold Stepper
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(cardBg)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text("Low Stock Threshold", color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Text("Triggers restock alert when quantity ≤ this number", color = textSub, fontSize = 11.sp)
-            }
+        // 6. Low Stock Threshold Stepper (Upgraded to GlassCard)
+        GlassCard(isDarkMode = isDarkMode) {
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(
-                    onClick = { if (lowStockThreshold > 0) lowStockThreshold-- },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(stepperBg, RoundedCornerShape(10.dp))
-                ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Decrease Threshold", tint = textMain)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Low Stock Threshold", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Triggers restock alert when quantity ≤ this number", color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp)
                 }
-                Text(
-                    text = lowStockThreshold.toString(), 
-                    color = Color(0xFFFF3B30), 
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(
-                    onClick = { lowStockThreshold++ },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(Color(0xFF007AFF), RoundedCornerShape(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Increase Threshold", tint = Color.White)
+                    IconButton(
+                        onClick = { if (lowStockThreshold > 0) lowStockThreshold-- },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(stepperBg, RoundedCornerShape(10.dp))
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Decrease Threshold", tint = Color.White)
+                    }
+                    Text(
+                        text = lowStockThreshold.toString(), 
+                        color = Color.White, 
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(
+                        onClick = { lowStockThreshold++ },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(Color(0xFF007AFF), RoundedCornerShape(10.dp))
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Increase Threshold", tint = Color.White)
+                    }
                 }
             }
         }
@@ -325,8 +414,8 @@ fun AddScreen(
             )
         }
 
-        // Save Button
-        Button(
+        // 7. Save to Pantry Hero Glass Button with Chromatic Dispersion
+        GlassHeroButton(
             onClick = {
                 if (itemName.isNotBlank()) {
                     val parsedPrice = priceText.toDoubleOrNull() ?: 0.0
@@ -347,11 +436,7 @@ fun AddScreen(
                     isSaved = true
                 }
             },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
+            isDarkMode = isDarkMode
         ) {
             Text("Save to Pantry", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
         }
