@@ -362,6 +362,7 @@ fun DashboardScreen(
                     0 -> PantryScreen(
                         items = pantryItems,
                         isDarkMode = isDarkMode,
+                        themePreference = currentUser.themePreference,
                         onItemUpdate = { updatedItem ->
                             currentUser.householdId?.let { hid ->
                                 val itemMap = hashMapOf(
