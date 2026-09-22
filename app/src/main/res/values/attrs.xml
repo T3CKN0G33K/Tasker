@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="LiquidGlassView">
+        <attr name="displacementScale" format="float" />
+        <attr name="blurAmount" format="float" />
+        <attr name="saturation" format="float" />
+        <attr name="aberrationIntensity" format="float" />
+        <attr name="elasticity" format="float" />
+        <attr name="cornerRadius" format="dimension" />
+        <attr name="cornerRadiusTopLeft" format="dimension" />
+        <attr name="cornerRadiusTopRight" format="dimension" />
+        <attr name="cornerRadiusBottomRight" format="dimension" />
+        <attr name="cornerRadiusBottomLeft" format="dimension" />
+        <attr name="flatEdges">
+            <flag name="top" value="1" />
+            <flag name="right" value="2" />
+            <flag name="bottom" value="4" />
+            <flag name="left" value="8" />
+        </attr>
+        <attr name="backdropSourceId" format="reference" />
+
+        <attr name="glassMaterial" format="enum">
+            <enum name="regular" value="0" />
+            <enum name="clear" value="1" />
+        </attr>
+        <attr name="bevelWidth" format="dimension" />
+        <attr name="refractionHeight" format="dimension" />
+        <attr name="dispersionStrength" format="float" />
+        <attr name="edgeSoftness" format="dimension" />
+        <attr name="sensorHighlight" format="boolean" />
+        <attr name="adaptiveTint" format="boolean" />
+        <attr name="adaptiveLensScale" format="boolean" />
+        <attr name="refractionOutward" format="boolean" />
+        <attr name="refractionNoFold" format="boolean" />
+        <attr name="refractionFalloff" format="float" />
+
+        <attr name="glassTint" format="color" />
+        <attr name="glassTintStrength" format="float" />
+    </declare-styleable>
+
+    <declare-styleable name="LiquidGlassTabBar">
+        <attr name="glassTabEntries" format="reference" />
+    </declare-styleable>
+</resources>

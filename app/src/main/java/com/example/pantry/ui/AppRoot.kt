@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import android.view.autofill.AutofillManager
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -14,15 +15,21 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -489,6 +496,7 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    val autofillManager = remember { context.getSystemService(AutofillManager::class.java) }
     val auth = Firebase.auth
     val db = Firebase.firestore
 
@@ -516,9 +524,15 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
             value = email,
             onValueChange = { email = it },
             label = { Text("Email", color = Color.Gray) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentType = ContentType.EmailAddress },
             shape = RoundedCornerShape(14.dp),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next
+            ),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color(0xFF1C1C1E),
                 unfocusedContainerColor = Color(0xFF1C1C1E),
@@ -535,10 +549,16 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
             value = password,
             onValueChange = { password = it },
             label = { Text("Password", color = Color.Gray) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentType = ContentType.Password },
             shape = RoundedCornerShape(14.dp),
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done
+            ),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color(0xFF1C1C1E),
                 unfocusedContainerColor = Color(0xFF1C1C1E),
@@ -568,6 +588,7 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
                     auth.createUserWithEmailAndPassword(trimmedEmail, password)
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
+                                autofillManager?.commit()
                                 val user = task.result?.user
                                 val uid = user?.uid ?: UUID.randomUUID().toString()
                                 val name = trimmedEmail.substringBefore("@")
@@ -594,6 +615,7 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
                                         onAuthRouting(profile, AppState.ONBOARDING)
                                     }
                             } else {
+                                autofillManager?.cancel()
                                 isLoading = false
                                 Toast.makeText(context, "Error: ${task.exception?.localizedMessage}", Toast.LENGTH_LONG).show()
                             }
@@ -602,6 +624,7 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
                     auth.signInWithEmailAndPassword(trimmedEmail, password)
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
+                                autofillManager?.commit()
                                 val firebaseUser = task.result?.user
                                 if (firebaseUser != null) {
                                     handleUserAuthSuccess(
@@ -618,6 +641,7 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
                                     Toast.makeText(context, "Login failed: User record null.", Toast.LENGTH_LONG).show()
                                 }
                             } else {
+                                autofillManager?.cancel()
                                 isLoading = false
                                 Toast.makeText(context, "Error: ${task.exception?.localizedMessage}", Toast.LENGTH_LONG).show()
                             }
@@ -632,7 +656,7 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
             if (isLoading) {
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
             } else {
-                Text(if (isSignUp) "Sign In" else "Sign In", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(if (isSignUp) "Sign Up" else "Sign In", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
         
