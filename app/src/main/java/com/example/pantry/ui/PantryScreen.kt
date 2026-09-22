@@ -529,44 +529,52 @@ fun EditItemDialog(
         title = { Text("Edit Item", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                val inputColors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White.copy(alpha = 0.12f),
+                    unfocusedContainerColor = Color.White.copy(alpha = 0.12f),
+                    focusedBorderColor = Color(0xFF007AFF),
+                    unfocusedBorderColor = Color.White.copy(alpha = 0.20f),
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                )
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Name", color = Color.Gray) },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    label = { Text("Name", color = Color.White.copy(alpha = 0.70f)) },
+                    colors = inputColors
                 )
                 OutlinedTextField(
                     value = category,
                     onValueChange = { category = it },
-                    label = { Text("Category", color = Color.Gray) },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    label = { Text("Category", color = Color.White.copy(alpha = 0.70f)) },
+                    colors = inputColors
                 )
                 OutlinedTextField(
                     value = priceText,
                     onValueChange = { priceText = it },
-                    label = { Text("Unit Price ($ e.g. 6.98)", color = Color.Gray) },
+                    label = { Text("Unit Price ($ e.g. 6.98)", color = Color.White.copy(alpha = 0.70f)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    colors = inputColors
                 )
                 OutlinedTextField(
                     value = quantityText,
                     onValueChange = { quantityText = it },
-                    label = { Text("Current Quantity (e.g. 0.25 for 1/4 Bag)", color = Color.Gray) },
+                    label = { Text("Current Quantity (e.g. 0.25 for 1/4 Bag)", color = Color.White.copy(alpha = 0.70f)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    colors = inputColors
                 )
                 OutlinedTextField(
                     value = unit,
                     onValueChange = { unit = it },
-                    label = { Text("Unit (e.g. Bag, Cans, Boxes)", color = Color.Gray) },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    label = { Text("Unit (e.g. Bag, Cans, Boxes)", color = Color.White.copy(alpha = 0.70f)) },
+                    colors = inputColors
                 )
                 OutlinedTextField(
                     value = lowStockThresholdText,
                     onValueChange = { lowStockThresholdText = it },
-                    label = { Text("Low Stock Threshold (e.g. 0.5 or 1.0)", color = Color.Gray) },
+                    label = { Text("Low Stock Threshold (e.g. 0.5 or 1.0)", color = Color.White.copy(alpha = 0.70f)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                    colors = inputColors
                 )
             }
         },

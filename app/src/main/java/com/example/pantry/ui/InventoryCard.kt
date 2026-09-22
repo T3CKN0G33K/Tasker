@@ -31,6 +31,7 @@ import com.example.pantry.data.HouseholdItem
 @Composable
 fun InventoryCard(
     item: HouseholdItem,
+    themePreference: String = "DEFAULT",
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
     onDelete: () -> Unit = {},
@@ -157,6 +158,7 @@ fun InventoryCard(
     if (showDeleteConfirm) {
         LiquidGlassDialog(
             onDismissRequest = { showDeleteConfirm = false },
+            themePreference = themePreference,
             title = {
                 Text(
                     text = "Delete Item",
