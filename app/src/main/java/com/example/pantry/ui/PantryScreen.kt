@@ -59,6 +59,7 @@ val samplePantryData = listOf(
 fun PantryScreen(
     items: List<PantryItem> = samplePantryData,
     isDarkMode: Boolean = true,
+    themePreference: String = "DEFAULT",
     onItemsChange: (List<PantryItem>) -> Unit = {},
     onItemUpdate: (PantryItem) -> Unit = {},
     onItemDelete: (String) -> Unit = {}
@@ -343,6 +344,7 @@ fun PantryScreen(
     itemToEdit?.let { item ->
         EditItemDialog(
             item = item,
+            themePreference = themePreference,
             onDismiss = { itemToEdit = null },
             onSave = { updatedItem ->
                 onItemUpdate(updatedItem)
@@ -509,6 +511,7 @@ fun PantryItemCard(
 @Composable
 fun EditItemDialog(
     item: PantryItem,
+    themePreference: String = "DEFAULT",
     onDismiss: () -> Unit,
     onSave: (PantryItem) -> Unit,
     onDelete: () -> Unit
@@ -522,6 +525,7 @@ fun EditItemDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = themePreference,
         title = { Text("Edit Item", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

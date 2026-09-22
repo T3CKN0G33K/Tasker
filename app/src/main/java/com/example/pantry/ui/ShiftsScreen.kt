@@ -389,6 +389,7 @@ fun ShiftsScreen(
     // Dialogs
     if (showLogShiftDialog) {
         LogSplitShiftDialog(
+            themePreference = currentUser.themePreference,
             onDismiss = { showLogShiftDialog = false },
             onLog = { newShift ->
                 currentShifts = listOf(newShift) + currentShifts
@@ -413,6 +414,7 @@ fun ShiftsScreen(
     if (showArchivedHistoryDialog) {
         ArchivedPayHistoryDialog(
             archivedPeriods = archivedPeriods,
+            themePreference = currentUser.themePreference,
             onDismiss = { showArchivedHistoryDialog = false }
         )
     }
@@ -420,6 +422,7 @@ fun ShiftsScreen(
 
 @Composable
 fun LogSplitShiftDialog(
+    themePreference: String = "DEFAULT",
     onDismiss: () -> Unit,
     onLog: (SplitShiftEntry) -> Unit
 ) {
@@ -436,6 +439,7 @@ fun LogSplitShiftDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = themePreference,
         title = { Text("Log Home Depot Split Shift", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -524,10 +528,12 @@ fun LogSplitShiftDialog(
 @Composable
 fun ArchivedPayHistoryDialog(
     archivedPeriods: List<ArchivedPayCycle>,
+    themePreference: String = "DEFAULT",
     onDismiss: () -> Unit
 ) {
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = themePreference,
         title = { Text("Archived Pay Periods", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
             if (archivedPeriods.isEmpty()) {

@@ -406,11 +406,11 @@ fun SettingsScreen(
     }
 
     if (showPrivacyPolicyDialog) {
-        PrivacyPolicyDialog(onDismiss = { showPrivacyPolicyDialog = false })
+        PrivacyPolicyDialog(themePreference = currentUser.themePreference, onDismiss = { showPrivacyPolicyDialog = false })
     }
 
     showUpdateDialog?.let { updateInfo ->
-        AppUpdateDialog(updateInfo = updateInfo, onDismiss = { showUpdateDialog = null })
+        AppUpdateDialog(updateInfo = updateInfo, themePreference = currentUser.themePreference, onDismiss = { showUpdateDialog = null })
     }
 }
 
@@ -453,6 +453,7 @@ fun HouseholdFeedbackFeedDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = currentUser.themePreference,
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Household Feedback Feed", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
@@ -679,6 +680,7 @@ fun ManageHouseholdDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = currentUser.themePreference,
         title = {
             Column {
                 Text("Household Members", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
@@ -850,6 +852,7 @@ fun SendFeedbackDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = currentUser.themePreference,
         title = { Text("Send Feedback", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
             Column(
@@ -1000,9 +1003,13 @@ fun SettingsToggleRow(
 }
 
 @Composable
-fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
+fun PrivacyPolicyDialog(
+    themePreference: String = "DEFAULT",
+    onDismiss: () -> Unit
+) {
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = themePreference,
         title = { Text("Privacy Policy", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(
@@ -1047,6 +1054,7 @@ fun EditProfileDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = currentUser.themePreference,
         title = { Text("Edit Profile & Security", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(

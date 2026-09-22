@@ -405,6 +405,7 @@ fun BudgetScreenContent(
     if (showEditBudgetDialog) {
         EditBudgetLimitDialog(
             currentLimit = monthlyLimit,
+            themePreference = currentUser.themePreference,
             onDismiss = { showEditBudgetDialog = false },
             onSave = { newLimit ->
                 onUpdateMonthlyLimit(newLimit)
@@ -420,6 +421,7 @@ fun BudgetScreenContent(
     billToEdit?.let { bill ->
         EditBillDialog(
             bill = bill,
+            themePreference = currentUser.themePreference,
             onDismiss = { billToEdit = null },
             onSave = { updatedBill ->
                 val updated = bills.map { if (it.id == bill.id) updatedBill else it }
@@ -469,6 +471,7 @@ fun AddBillDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = currentUser.themePreference,
         title = { Text("Add Recurring Monthly Bill", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -537,6 +540,7 @@ fun AddTransactionDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = currentUser.themePreference,
         title = { Text("Log Out-of-Pocket Expense", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -595,6 +599,7 @@ fun AddTransactionDialog(
 @Composable
 fun EditBudgetLimitDialog(
     currentLimit: Double,
+    themePreference: String = "DEFAULT",
     onDismiss: () -> Unit,
     onSave: (Double) -> Unit
 ) {
@@ -603,6 +608,7 @@ fun EditBudgetLimitDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = themePreference,
         title = { Text("Edit Monthly Budget Cap", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -640,6 +646,7 @@ fun EditBudgetLimitDialog(
 @Composable
 fun EditBillDialog(
     bill: BillItem,
+    themePreference: String = "DEFAULT",
     onDismiss: () -> Unit,
     onSave: (BillItem) -> Unit,
     onDelete: () -> Unit
@@ -653,6 +660,7 @@ fun EditBillDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        themePreference = themePreference,
         title = { Text("Edit Monthly Bill", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

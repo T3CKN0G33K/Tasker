@@ -208,6 +208,7 @@ fun AppRoot() {
     pendingUpdate?.let { updateInfo ->
         AppUpdateDialog(
             updateInfo = updateInfo,
+            themePreference = activeUser?.themePreference ?: "DEFAULT",
             onDismiss = { pendingUpdate = null }
         )
     }
@@ -406,6 +407,7 @@ fun handleUserAuthSuccess(
 @Composable
 fun AppUpdateDialog(
     updateInfo: UpdateInfo,
+    themePreference: String = "DEFAULT",
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -414,6 +416,7 @@ fun AppUpdateDialog(
 
     LiquidGlassDialog(
         onDismissRequest = { if (!isDownloading) onDismiss() },
+        themePreference = themePreference,
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("New Update Available", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)

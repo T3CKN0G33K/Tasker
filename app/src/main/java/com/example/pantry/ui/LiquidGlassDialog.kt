@@ -17,25 +17,48 @@ fun LiquidGlassDialog(
     text: @Composable (() -> Unit)? = null,
     confirmButton: @Composable (() -> Unit)? = null,
     dismissButton: @Composable (() -> Unit)? = null,
-    isDarkMode: Boolean = true
+    isDarkMode: Boolean = true,
+    themePreference: String = "DEFAULT"
 ) {
-    val dialogBg = if (isDarkMode) {
-        Color(0xFF1C1C1E).copy(alpha = 0.85f)
-    } else {
-        Color.White.copy(alpha = 0.90f)
+    val dialogBg = when (themePreference.uppercase()) {
+        "PURPLE" -> if (isDarkMode) {
+            Color(0xFF532873).copy(alpha = 0.90f) // Translucent deep purple glass
+        } else {
+            Color(0xFF8B53AF).copy(alpha = 0.92f)
+        }
+        "CYAN" -> if (isDarkMode) {
+            Color(0xFF006978).copy(alpha = 0.90f) // Translucent deep cyan glass
+        } else {
+            Color(0xFF26C6DA).copy(alpha = 0.92f)
+        }
+        else -> if (isDarkMode) {
+            Color(0xFF1C1C1E).copy(alpha = 0.88f)
+        } else {
+            Color.White.copy(alpha = 0.92f)
+        }
     }
 
     val dialogBorder = Brush.verticalGradient(
-        colors = if (isDarkMode) {
-            listOf(
-                Color.White.copy(alpha = 0.50f),
-                Color.White.copy(alpha = 0.15f)
+        colors = when (themePreference.uppercase()) {
+            "PURPLE" -> listOf(
+                Color(0xFFD8B4FE).copy(alpha = 0.65f),
+                Color(0xFF9E6BC2).copy(alpha = 0.35f)
             )
-        } else {
-            listOf(
-                Color.White,
-                Color.White.copy(alpha = 0.60f)
+            "CYAN" -> listOf(
+                Color(0xFFB2EBF2).copy(alpha = 0.65f),
+                Color(0xFF0097A9).copy(alpha = 0.35f)
             )
+            else -> if (isDarkMode) {
+                listOf(
+                    Color.White.copy(alpha = 0.50f),
+                    Color.White.copy(alpha = 0.15f)
+                )
+            } else {
+                listOf(
+                    Color.White,
+                    Color.White.copy(alpha = 0.60f)
+                )
+            }
         }
     )
 
