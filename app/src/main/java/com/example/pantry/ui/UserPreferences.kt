@@ -23,6 +23,7 @@ object UserPreferences {
     private const val KEY_HOUSEHOLD_ID = "household_id"
     private const val KEY_CAN_MANAGE = "can_manage_household"
     private const val KEY_DARK_MODE = "dark_mode"
+    private const val KEY_THEME_PREFERENCE = "theme_preference"
 
     private const val KEY_GLASS_ALPHA = "glass_alpha"
     private const val KEY_GLASS_BLUR = "glass_blur"
@@ -45,6 +46,7 @@ object UserPreferences {
             putString(KEY_ROLE, user.role.name)
             putString(KEY_HOUSEHOLD_ID, user.householdId)
             putBoolean(KEY_CAN_MANAGE, user.canManageHousehold)
+            putString(KEY_THEME_PREFERENCE, user.themePreference)
             apply()
         }
     }
@@ -58,8 +60,9 @@ object UserPreferences {
         val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
         val householdId = prefs.getString(KEY_HOUSEHOLD_ID, null)
         val canManage = prefs.getBoolean(KEY_CAN_MANAGE, false)
+        val themePref = prefs.getString(KEY_THEME_PREFERENCE, "DEFAULT") ?: "DEFAULT"
 
-        return UserProfile(uid, name, email, role, householdId, canManage)
+        return UserProfile(uid, name, email, role, householdId, canManage, themePref)
     }
 
     fun saveDarkMode(context: Context, isDark: Boolean) {

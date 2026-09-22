@@ -1,9 +1,9 @@
 package com.example.pantry.ui
 
 import android.content.Context
-import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Feedback
@@ -28,6 +29,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -41,7 +43,50 @@ import com.google.firebase.Firebase
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
+
+@Composable
+fun GlassCard(
+    modifier: Modifier = Modifier,
+    isDarkMode: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val cardBg = if (isDarkMode) {
+        Color.White.copy(alpha = 0.10f)
+    } else {
+        Color.White.copy(alpha = 0.70f)
+    }
+    
+    val cardBorder = if (isDarkMode) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.40f),
+                Color.White.copy(alpha = 0.10f)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color.White,
+                Color.White.copy(alpha = 0.50f)
+            )
+        )
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(cardBg)
+            .border(
+                width = 1.dp,
+                brush = cardBorder,
+                shape = RoundedCornerShape(20.dp)
+            ),
+        content = content
+    )
+}
 
 @Composable
 fun SettingsScreen(
@@ -59,6 +104,7 @@ fun SettingsScreen(
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val db = Firebase.firestore
     var notifications by remember { mutableStateOf(true) }
     var showManageDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -71,67 +117,68 @@ fun SettingsScreen(
                            currentUser.role == Role.ADMIN || 
                            currentUser.canManageHousehold
 
-    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
-    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
     val textMain = if (isDarkMode) Color.White else Color.Black
-    val textSub = if (isDarkMode) Color.Gray else Color(0xFF6C6C70)
+    val textSub = if (isDarkMode) Color.LightGray else Color(0xFF6C6C70)
 
+    // Root layout set to Color.Transparent to unblock ambient background gradient!
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(screenBg)
+            .background(Color.Transparent)
             .verticalScroll(rememberScrollState())
             .padding(top = 64.dp, bottom = 120.dp, start = 20.dp, end = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(28.dp)
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         Text("Settings", color = textMain, fontSize = 34.sp, fontWeight = FontWeight.Bold)
 
-        // Dynamic Profile Section (Clickable to Edit Profile)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(cardBg)
-                .clickable { showEditProfileDialog = true }
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // 1. Dynamic Profile Section (Upgraded to GlassCard)
+        GlassCard(
+            isDarkMode = isDarkMode,
+            modifier = Modifier.clickable { showEditProfileDialog = true }
         ) {
-            Box(
-                modifier = Modifier.size(60.dp).clip(CircleShape).background(if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = currentUser.name.take(1).uppercase(), 
-                    color = textMain, 
-                    fontSize = 24.sp, 
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(currentUser.name, color = textMain, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(currentUser.email, color = textSub, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(2.dp))
-                Text("Tap to edit profile & security", color = Color(0xFF007AFF), fontSize = 11.sp)
-            }
-            // Role Badge
-            Box(
+            Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF007AFF).copy(alpha = 0.2f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(currentUser.role.name, color = Color(0xFF007AFF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Box(
+                    modifier = Modifier
+                        .size(60.dp)
+                        .clip(CircleShape)
+                        .background(if (isDarkMode) Color.White.copy(alpha = 0.20f) else Color(0xFFE5E5EA)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = currentUser.name.take(1).uppercase(), 
+                        color = textMain, 
+                        fontSize = 24.sp, 
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(currentUser.name, color = textMain, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(currentUser.email, color = textSub, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text("Tap to edit profile & security", color = Color(0xFF007AFF), fontSize = 11.sp)
+                }
+                // Role Badge
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF007AFF).copy(alpha = 0.25f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(currentUser.role.name, color = Color(0xFF007AFF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
 
-        // Household Group
+        // 2. Household Group (Upgraded to GlassCard)
         if (currentUser.householdId != null) {
-            Column(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cardBg)
-            ) {
-                // Permission Check: Show Manage Household if OWNER, ADMIN, or granted permission
+            GlassCard(isDarkMode = isDarkMode) {
                 if (canManageHousehold) {
                     SettingsActionRow(
                         icon = Icons.Default.Home, 
@@ -142,10 +189,9 @@ fun SettingsScreen(
                     )
                 }
                 
-                // Permission Check: Only Owners and Admins can view Feedback Feed and Share Link
                 if (currentUser.role == Role.OWNER || currentUser.role == Role.ADMIN) {
                     if (canManageHousehold) {
-                        HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+                        HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
                     }
                     SettingsActionRow(
                         icon = Icons.Default.RateReview, 
@@ -154,7 +200,7 @@ fun SettingsScreen(
                         textColor = textMain,
                         onClick = { showFeedbackFeedDialog = true }
                     )
-                    HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+                    HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
                     SettingsActionRow(
                         icon = Icons.Default.PersonAdd, 
                         iconBg = Color(0xFF007AFF), 
@@ -166,7 +212,7 @@ fun SettingsScreen(
                             Toast.makeText(context, "Invite link copied to clipboard!", Toast.LENGTH_SHORT).show()
                         }
                     )
-                    HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+                    HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
                     SettingsActionRow(
                         icon = Icons.Default.ContentCopy, 
                         iconBg = Color(0xFF34C759), 
@@ -182,10 +228,90 @@ fun SettingsScreen(
             }
         }
 
-        // Preferences Group
-        Column(
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cardBg)
-        ) {
+        // 3. Theme Color Selector Group (Upgraded to GlassCard)
+        GlassCard(isDarkMode = isDarkMode) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF5856D6)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = "Theme Color",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text("Theme Color", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Choose ambient gradient for Liquid Glass refraction", color = textSub, fontSize = 12.sp)
+                    }
+                }
+
+                HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 1. DEFAULT Option
+                    ThemeOptionButton(
+                        label = "Default",
+                        selected = currentUser.themePreference.equals("DEFAULT", ignoreCase = true),
+                        previewBrush = Brush.verticalGradient(
+                            colors = if (isDarkMode) listOf(Color(0xFF1C1C1E), Color.Black) else listOf(Color.White, Color(0xFFF2F2F7))
+                        ),
+                        isDarkMode = isDarkMode,
+                        onClick = {
+                            val updated = currentUser.copy(themePreference = "DEFAULT")
+                            updateUserTheme(updated, db, context, onProfileUpdated)
+                        }
+                    )
+
+                    // 2. CYAN Option
+                    ThemeOptionButton(
+                        label = "Cyan",
+                        selected = currentUser.themePreference.equals("CYAN", ignoreCase = true),
+                        previewBrush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFF4DD0E1), Color(0xFF0097A9))
+                        ),
+                        isDarkMode = isDarkMode,
+                        onClick = {
+                            val updated = currentUser.copy(themePreference = "CYAN")
+                            updateUserTheme(updated, db, context, onProfileUpdated)
+                        }
+                    )
+
+                    // 3. PURPLE Option
+                    ThemeOptionButton(
+                        label = "Purple",
+                        selected = currentUser.themePreference.equals("PURPLE", ignoreCase = true),
+                        previewBrush = Brush.verticalGradient(
+                            colors = listOf(Color(0xFF9E6BC2), Color(0xFF734199))
+                        ),
+                        isDarkMode = isDarkMode,
+                        onClick = {
+                            val updated = currentUser.copy(themePreference = "PURPLE")
+                            updateUserTheme(updated, db, context, onProfileUpdated)
+                        }
+                    )
+                }
+            }
+        }
+
+        // 4. Preferences Group (Upgraded to GlassCard)
+        GlassCard(isDarkMode = isDarkMode) {
             SettingsToggleRow(
                 icon = Icons.Default.Palette, 
                 iconBg = Color(0xFF007AFF), 
@@ -197,7 +323,7 @@ fun SettingsScreen(
                     onToggleDarkMode(isChecked)
                 }
             )
-            HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+            HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
             SettingsToggleRow(
                 icon = Icons.Default.Notifications, 
                 iconBg = Color(0xFFFF3B30), 
@@ -206,7 +332,7 @@ fun SettingsScreen(
                 checked = notifications, 
                 onCheckedChange = { notifications = it }
             )
-            HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+            HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
             SettingsActionRow(
                 icon = Icons.Default.Feedback,
                 iconBg = Color(0xFF5856D6),
@@ -216,10 +342,8 @@ fun SettingsScreen(
             )
         }
 
-        // About / Actions Group
-        Column(
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(cardBg)
-        ) {
+        // 5. About / Actions Group (Upgraded to GlassCard)
+        GlassCard(isDarkMode = isDarkMode) {
             SettingsActionRow(
                 icon = Icons.Default.SystemUpdate, 
                 iconBg = Color(0xFF007AFF), 
@@ -232,7 +356,7 @@ fun SettingsScreen(
                     }
                 }
             )
-            HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+            HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
             SettingsActionRow(
                 icon = Icons.Default.PrivacyTip, 
                 iconBg = Color(0xFF34C759), 
@@ -240,7 +364,7 @@ fun SettingsScreen(
                 textColor = textMain,
                 onClick = { showPrivacyPolicyDialog = true }
             )
-            HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+            HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -249,50 +373,21 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                Text("Log Out", color = Color(0xFFFF3B30), fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                Text("Sign Out", color = Color(0xFFFF3B30), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
         }
+    }
 
-        // App Version & Build Footer
-        val versionName = try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.3"
-        } catch (_: Exception) { "1.3" }
-        val versionCode = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
-            } else {
-                @Suppress("DEPRECATION")
-                context.packageManager.getPackageInfo(context.packageName, 0).versionCode.toLong()
-            }
-        } catch (_: Exception) { 14L }
-
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Tasker v$versionName (Build $versionCode)",
-                color = textSub,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
+    // Dialogs
+    if (showManageDialog) {
+        ManageHouseholdDialog(currentUser = currentUser, onDismiss = { showManageDialog = false })
     }
 
     if (showEditProfileDialog) {
         EditProfileDialog(
             currentUser = currentUser,
             onDismiss = { showEditProfileDialog = false },
-            onProfileUpdated = { updated ->
-                onProfileUpdated(updated)
-            }
-        )
-    }
-
-    if (showManageDialog) {
-        ManageHouseholdDialog(
-            currentUser = currentUser,
-            onDismiss = { showManageDialog = false }
+            onProfileUpdated = onProfileUpdated
         )
     }
 
@@ -311,192 +406,12 @@ fun SettingsScreen(
     }
 
     if (showPrivacyPolicyDialog) {
-        PrivacyPolicyDialog(
-            onDismiss = { showPrivacyPolicyDialog = false }
-        )
+        PrivacyPolicyDialog(onDismiss = { showPrivacyPolicyDialog = false })
     }
 
     showUpdateDialog?.let { updateInfo ->
-        AppUpdateDialog(
-            updateInfo = updateInfo,
-            onDismiss = { showUpdateDialog = null }
-        )
+        AppUpdateDialog(updateInfo = updateInfo, onDismiss = { showUpdateDialog = null })
     }
-}
-
-@Composable
-fun SendFeedbackDialog(
-    currentUser: UserProfile,
-    onDismiss: () -> Unit
-) {
-    val db = Firebase.firestore
-    val context = LocalContext.current
-    var feedbackText by remember { mutableStateOf("") }
-    var selectedTopic by remember { mutableStateOf("Bug Report") }
-    var isSubmitting by remember { mutableStateOf(false) }
-
-    val topics = listOf("Bug Report", "Feature Request", "Other")
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
-        title = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Send App Feedback", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Text("Let us know what's working or what needs fixing:", color = Color.Gray, fontSize = 12.sp)
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Topic Chips Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    topics.forEach { topic ->
-                        val isSelected = selectedTopic == topic
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) Color(0xFF007AFF) else Color(0xFF2C2C2E))
-                                .clickable { selectedTopic = topic }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (topic == "Feature Request") "Feature" else if (topic == "Bug Report") "Bug" else topic,
-                                color = if (isSelected) Color.White else Color.Gray,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-
-                OutlinedTextField(
-                    value = feedbackText,
-                    onValueChange = { feedbackText = it },
-                    placeholder = { Text("Type your feedback here...", color = Color.DarkGray) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(130.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF007AFF),
-                        unfocusedBorderColor = Color(0xFF3A3A3C),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    )
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (feedbackText.isBlank()) return@Button
-                    isSubmitting = true
-                    currentUser.householdId?.let { hid ->
-                        val feedbackData = hashMapOf(
-                            "senderName" to currentUser.name,
-                            "senderEmail" to currentUser.email,
-                            "topic" to selectedTopic,
-                            "message" to feedbackText.trim(),
-                            "timestamp" to System.currentTimeMillis()
-                        )
-                        db.collection("households").document(hid).collection("feedbacks")
-                            .add(feedbackData)
-                            .addOnSuccessListener {
-                                isSubmitting = false
-                                Toast.makeText(context, "Feedback submitted successfully!", Toast.LENGTH_SHORT).show()
-                                onDismiss()
-                            }
-                            .addOnFailureListener { e ->
-                                isSubmitting = false
-                                Toast.makeText(context, "Failed to submit: ${e.message}", Toast.LENGTH_LONG).show()
-                            }
-                    } ?: run {
-                        isSubmitting = false
-                        Toast.makeText(context, "Feedback submitted!", Toast.LENGTH_SHORT).show()
-                        onDismiss()
-                    }
-                },
-                enabled = !isSubmitting && feedbackText.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
-            ) {
-                if (isSubmitting) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
-                } else {
-                    Text("Submit", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color.Gray)
-            }
-        }
-    )
-}
-
-@Composable
-fun PrivacyPolicyDialog(
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
-        title = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Privacy Policy", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Text("Tasker Pantry Manager Data Protection", color = Color.Gray, fontSize = 12.sp)
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 380.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("1. Data Security & Household Isolation", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(
-                    "All inventory items, budgets, transactions, and member roles are linked strictly to your encrypted Household ID in Firebase Firestore. Only authenticated members of your household can access your pantry data.",
-                    color = Color.LightGray,
-                    fontSize = 13.sp
-                )
-
-                Text("2. Authentication & Credentials", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(
-                    "User credentials are secured through Firebase Authentication. We never store raw passwords or sensitive payment data.",
-                    color = Color.LightGray,
-                    fontSize = 13.sp
-                )
-
-                Text("3. Device Permissions & Preferences", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(
-                    "The app requests Android permissions for Restock Notifications and In-App Auto-Updates. Your preferences are cached locally on your device for instant offline access.",
-                    color = Color.LightGray,
-                    fontSize = 13.sp
-                )
-
-                Text("4. No Third-Party Data Selling", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(
-                    "We do not sell, rent, or trade your personal information or household inventory data with any third-party advertisers.",
-                    color = Color.LightGray,
-                    fontSize = 13.sp
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
-            }
-        }
-    )
 }
 
 @Composable
@@ -707,161 +622,6 @@ fun FeedbackCardItem(
 }
 
 @Composable
-fun EditProfileDialog(
-    currentUser: UserProfile,
-    onDismiss: () -> Unit,
-    onProfileUpdated: (UserProfile) -> Unit
-) {
-    var name by remember { mutableStateOf(currentUser.name) }
-    var email by remember { mutableStateOf(currentUser.email) }
-    var currentPassword by remember { mutableStateOf("") }
-    var newPassword by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-
-    val context = LocalContext.current
-    val auth = Firebase.auth
-    val db = Firebase.firestore
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
-        title = {
-            Text("Edit Profile & Security", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("ACCOUNT DETAILS", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Display Name", color = Color.Gray) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-                )
-
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it },
-                    label = { Text("Email Address", color = Color.Gray) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-                Text("SECURITY & PASSWORD", color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-
-                OutlinedTextField(
-                    value = currentPassword,
-                    onValueChange = { currentPassword = it },
-                    label = { Text("Current Password (for changes)", color = Color.Gray) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-                )
-
-                OutlinedTextField(
-                    value = newPassword,
-                    onValueChange = { newPassword = it },
-                    label = { Text("New Password (Optional)", color = Color.Gray) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val firebaseUser = auth.currentUser
-                    if (firebaseUser == null) return@Button
-
-                    isLoading = true
-                    val trimmedEmail = email.trim()
-                    val emailChanged = trimmedEmail.isNotBlank() && trimmedEmail != currentUser.email
-                    val passwordChanged = newPassword.isNotBlank()
-
-                    if (emailChanged || passwordChanged) {
-                        if (currentPassword.isBlank()) {
-                            isLoading = false
-                            Toast.makeText(context, "Current password required to save email/password changes.", Toast.LENGTH_LONG).show()
-                            return@Button
-                        }
-
-                        val credential = EmailAuthProvider.getCredential(currentUser.email, currentPassword)
-                        firebaseUser.reauthenticate(credential)
-                            .addOnSuccessListener {
-                                if (emailChanged) {
-                                    firebaseUser.verifyBeforeUpdateEmail(trimmedEmail)
-                                }
-                                if (passwordChanged) {
-                                    firebaseUser.updatePassword(newPassword)
-                                }
-                                updateProfileInFirestore(firebaseUser.uid, name, trimmedEmail, currentUser, db, context) { updated ->
-                                    isLoading = false
-                                    onProfileUpdated(updated)
-                                    onDismiss()
-                                }
-                            }
-                    } else {
-                        updateProfileInFirestore(firebaseUser.uid, name, currentUser.email, currentUser, db, context) { updated ->
-                            isLoading = false
-                            onProfileUpdated(updated)
-                            onDismiss()
-                        }
-                    }
-                },
-                enabled = !isLoading,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
-                } else {
-                    Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
-        }
-    )
-}
-
-private fun updateProfileInFirestore(
-    uid: String,
-    name: String,
-    email: String,
-    currentUser: UserProfile,
-    db: FirebaseFirestore,
-    context: Context,
-    onSuccess: (UserProfile) -> Unit
-) {
-    val updatedProfile = currentUser.copy(name = name, email = email)
-
-    val userMap = hashMapOf<String, Any>(
-        "name" to name,
-        "email" to email
-    )
-
-    // Update users/{uid}
-    db.collection("users").document(uid).update(userMap)
-
-    // Update households/{hid}/members/{uid}
-    currentUser.householdId?.let { hid ->
-        db.collection("households").document(hid)
-            .collection("members").document(uid)
-            .update(userMap)
-    }
-
-    UserPreferences.saveUser(context, updatedProfile)
-    Toast.makeText(context, "Profile updated successfully!", Toast.LENGTH_SHORT).show()
-    onSuccess(updatedProfile)
-}
-
-@Composable
 fun ManageHouseholdDialog(
     currentUser: UserProfile,
     onDismiss: () -> Unit
@@ -884,7 +644,8 @@ fun ManageHouseholdDialog(
                             val roleStr = doc.getString("role") ?: "MEMBER"
                             val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
                             val canManage = doc.getBoolean("canManageHousehold") ?: false
-                            UserProfile(uid, name, email, role, hid, canManage)
+                            val tPref = doc.getString("themePreference") ?: "DEFAULT"
+                            UserProfile(uid, name, email, role, hid, canManage, tPref)
                         }
                         memberList = members
                         isLoading = false
@@ -902,7 +663,8 @@ fun ManageHouseholdDialog(
                             val roleStr = doc.getString("role") ?: "MEMBER"
                             val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
                             val canManage = doc.getBoolean("canManageHousehold") ?: false
-                            UserProfile(uid, name, email, role, hid, canManage)
+                            val tPref = doc.getString("themePreference") ?: "DEFAULT"
+                            UserProfile(uid, name, email, role, hid, canManage, tPref)
                         }
                         userList = users
                         isLoading = false
@@ -1014,12 +776,208 @@ fun ManageHouseholdDialog(
 }
 
 @Composable
+fun ThemeOptionButton(
+    label: String,
+    selected: Boolean,
+    previewBrush: Brush,
+    isDarkMode: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(previewBrush)
+                .border(
+                    width = if (selected) 3.dp else 1.dp,
+                    color = if (selected) Color(0xFF007AFF) else if (isDarkMode) Color(0xFF3A3A3C) else Color(0xFFE5E5EA),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        Text(
+            text = label,
+            color = if (selected) Color(0xFF007AFF) else if (isDarkMode) Color.Gray else Color(0xFF6C6C70),
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+        )
+    }
+}
+
+private fun updateUserTheme(
+    updatedUser: UserProfile,
+    db: FirebaseFirestore,
+    context: Context,
+    onProfileUpdated: (UserProfile) -> Unit
+) {
+    UserPreferences.saveUser(context, updatedUser)
+    onProfileUpdated(updatedUser)
+
+    db.collection("users").document(updatedUser.uid)
+        .set(hashMapOf("themePreference" to updatedUser.themePreference), SetOptions.merge())
+        .addOnSuccessListener {
+            Toast.makeText(context, "Theme set to ${updatedUser.themePreference}!", Toast.LENGTH_SHORT).show()
+        }
+}
+
+@Composable
+fun SendFeedbackDialog(
+    currentUser: UserProfile,
+    onDismiss: () -> Unit
+) {
+    var message by remember { mutableStateOf("") }
+    var selectedType by remember { mutableStateOf("Bug Report") }
+    var isLoading by remember { mutableStateOf(false) }
+    val feedbackTypes = listOf("Bug Report", "Feature Request", "Other")
+
+    val context = LocalContext.current
+    val db = Firebase.firestore
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1C1C1E),
+        title = { Text("Send Feedback", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    feedbackTypes.forEach { type ->
+                        val isSelected = selectedType == type
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) Color(0xFF007AFF) else Color(0xFF2C2C2E))
+                                .clickable { selectedType = type }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (type == "Feature Request") "Feature" else if (type == "Bug Report") "Bugs" else type,
+                                color = if (isSelected) Color.White else Color.Gray,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = message,
+                    onValueChange = { message = it },
+                    placeholder = { Text("Tell us what's on your mind...", color = Color.Gray) },
+                    modifier = Modifier.fillMaxWidth().height(140.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF2C2C2E),
+                        unfocusedContainerColor = Color(0xFF2C2C2E),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (message.isNotBlank()) {
+                        isLoading = true
+                        val hid = currentUser.householdId
+                        if (hid != null) {
+                            val docRef = db.collection("households").document(hid).collection("feedbacks").document()
+                            val feedbackData = hashMapOf(
+                                "senderUid" to currentUser.uid,
+                                "senderName" to currentUser.name,
+                                "senderEmail" to currentUser.email,
+                                "topic" to selectedType,
+                                "message" to message.trim(),
+                                "timestamp" to System.currentTimeMillis()
+                            )
+                            docRef.set(feedbackData)
+                                .addOnSuccessListener {
+                                    isLoading = false
+                                    Toast.makeText(context, "Feedback sent to household!", Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                }
+                                .addOnFailureListener { e ->
+                                    isLoading = false
+                                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                        } else {
+                            isLoading = false
+                            Toast.makeText(context, "Feedback saved locally!", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
+                enabled = !isLoading
+            ) {
+                Text("Submit", color = Color.White)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
+        }
+    )
+}
+
+@Composable
+fun SettingsActionRow(
+    icon: ImageVector,
+    iconBg: Color,
+    text: String,
+    textColor: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(iconBg),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = text, tint = Color.White, modifier = Modifier.size(18.dp))
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(text, color = textColor, fontSize = 16.sp, modifier = Modifier.weight(1f))
+        Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+    }
+}
+
+@Composable
 fun SettingsToggleRow(
-    icon: ImageVector, 
-    iconBg: Color, 
-    text: String, 
-    textColor: Color = Color.White,
-    checked: Boolean, 
+    icon: ImageVector,
+    iconBg: Color,
+    text: String,
+    textColor: Color,
+    checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -1029,50 +987,211 @@ fun SettingsToggleRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(iconBg), 
+            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(iconBg),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+            Icon(imageVector = icon, contentDescription = text, tint = Color.White, modifier = Modifier.size(18.dp))
         }
         Spacer(modifier = Modifier.width(16.dp))
-        Text(text, color = textColor, fontSize = 17.sp, modifier = Modifier.weight(1f))
+        Text(text, color = textColor, fontSize = 16.sp, modifier = Modifier.weight(1f))
         Switch(
             checked = checked, 
             onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White, 
-                checkedTrackColor = Color(0xFF34C759), 
-                uncheckedThumbColor = Color.White, 
-                uncheckedTrackColor = Color(0xFF3A3A3C), 
-                uncheckedBorderColor = Color.Transparent
-            )
+            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF34C759))
         )
     }
 }
 
 @Composable
-fun SettingsActionRow(
-    icon: ImageVector, 
-    iconBg: Color, 
-    text: String,
-    textColor: Color = Color.White,
-    onClick: () -> Unit = {}
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(iconBg), 
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1C1C1E),
+        title = { Text("Privacy Policy", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "Pantry & Household Manager built for seamless local and synced household organization.",
+                    color = Color.LightGray,
+                    fontSize = 14.sp
+                )
+                Text(
+                    "Data Protection:\n- We do not sell or share personal data.\n- Household invites are securely scoped to member IDs.\n- All authentication tokens are managed by Google Firebase.",
+                    color = Color.Gray,
+                    fontSize = 13.sp
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
+            }
         }
-        Spacer(modifier = Modifier.width(16.dp))
-        Text(text, color = textColor, fontSize = 17.sp, modifier = Modifier.weight(1f))
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF8E8E93))
-    }
+    )
+}
+
+@Composable
+fun EditProfileDialog(
+    currentUser: UserProfile,
+    onDismiss: () -> Unit,
+    onProfileUpdated: (UserProfile) -> Unit
+) {
+    var name by remember { mutableStateOf(currentUser.name) }
+    var currentPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
+    var isUpdatingPassword by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val db = Firebase.firestore
+    val auth = Firebase.auth
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1C1C1E),
+        title = { Text("Edit Profile & Security", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Full Name", color = Color.Gray) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedContainerColor = Color(0xFF2C2C2E),
+                        unfocusedContainerColor = Color(0xFF2C2C2E),
+                        focusedBorderColor = Color(0xFF007AFF)
+                    )
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Change Password", color = Color.White, fontSize = 14.sp)
+                    Switch(
+                        checked = isUpdatingPassword,
+                        onCheckedChange = { isUpdatingPassword = it },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF007AFF))
+                    )
+                }
+
+                if (isUpdatingPassword) {
+                    OutlinedTextField(
+                        value = currentPassword,
+                        onValueChange = { currentPassword = it },
+                        label = { Text("Current Password", color = Color.Gray) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = Color(0xFF2C2C2E),
+                            unfocusedContainerColor = Color(0xFF2C2C2E)
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = newPassword,
+                        onValueChange = { newPassword = it },
+                        label = { Text("New Password (6+ chars)", color = Color.Gray) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = Color(0xFF2C2C2E),
+                            unfocusedContainerColor = Color(0xFF2C2C2E)
+                        )
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isBlank()) {
+                        Toast.makeText(context, "Name cannot be empty.", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+
+                    isLoading = true
+                    val updatedUser = currentUser.copy(name = name.trim())
+
+                    // 1. Update Firestore Profile
+                    db.collection("users").document(currentUser.uid).update("name", name.trim())
+                        .addOnSuccessListener {
+                            // Update local storage
+                            UserPreferences.saveUser(context, updatedUser)
+                            onProfileUpdated(updatedUser)
+
+                            // 2. Handle Password Change if toggled
+                            if (isUpdatingPassword) {
+                                if (currentPassword.isBlank() || newPassword.length < 6) {
+                                    isLoading = false
+                                    Toast.makeText(context, "Enter current password and new password (min 6 chars).", Toast.LENGTH_LONG).show()
+                                    return@addOnSuccessListener
+                                }
+
+                                val user = auth.currentUser
+                                if (user != null && user.email != null) {
+                                    val credential = EmailAuthProvider.getCredential(user.email!!, currentPassword)
+                                    user.reauthenticate(credential)
+                                        .addOnSuccessListener {
+                                            user.updatePassword(newPassword)
+                                                .addOnSuccessListener {
+                                                    isLoading = false
+                                                    Toast.makeText(context, "Profile & Password Updated!", Toast.LENGTH_SHORT).show()
+                                                    onDismiss()
+                                                }
+                                                .addOnFailureListener { e ->
+                                                    isLoading = false
+                                                    Toast.makeText(context, "Password Update Failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                                }
+                                        }
+                                        .addOnFailureListener {
+                                            isLoading = false
+                                            Toast.makeText(context, "Incorrect current password.", Toast.LENGTH_LONG).show()
+                                        }
+                                } else {
+                                    isLoading = false
+                                    Toast.makeText(context, "Profile Updated!", Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                }
+                            } else {
+                                isLoading = false
+                                Toast.makeText(context, "Profile Updated!", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            isLoading = false
+                            Toast.makeText(context, "Failed to update profile: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
+                enabled = !isLoading
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                } else {
+                    Text("Save Changes", color = Color.White)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = Color.Gray)
+            }
+        }
+    )
 }

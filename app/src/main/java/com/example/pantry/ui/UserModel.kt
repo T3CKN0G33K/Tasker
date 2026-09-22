@@ -8,7 +8,8 @@ data class UserProfile(
     val email: String,
     val role: Role,
     val householdId: String? = null,
-    val canManageHousehold: Boolean = false
+    val canManageHousehold: Boolean = false,
+    val themePreference: String = "DEFAULT" // "DEFAULT", "CYAN", "PURPLE"
 )
 
 data class FeedbackItem(

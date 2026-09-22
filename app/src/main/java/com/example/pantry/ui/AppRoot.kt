@@ -99,11 +99,12 @@ fun AppRoot() {
                 "email" to savedProfile.email,
                 "role" to savedProfile.role.name,
                 "householdId" to savedProfile.householdId,
-                "canManageHousehold" to savedProfile.canManageHousehold
+                "canManageHousehold" to savedProfile.canManageHousehold,
+                "themePreference" to savedProfile.themePreference
             )
             db.collection("users").document(firebaseUser.uid).set(userSyncMap, SetOptions.merge())
 
-            // Real-time listener on users/{uid} to sync roles, permissions, and household IDs
+            // Real-time listener on users/{uid} to sync roles, permissions, theme, and household IDs
             db.collection("users").document(firebaseUser.uid)
                 .addSnapshotListener { doc, _ ->
                     if (doc != null && doc.exists()) {
@@ -111,8 +112,14 @@ fun AppRoot() {
                         val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
                         val householdId = doc.getString("householdId") ?: savedProfile.householdId
                         val canManage = doc.getBoolean("canManageHousehold") ?: savedProfile.canManageHousehold
+                        val themePref = doc.getString("themePreference") ?: activeUser?.themePreference ?: savedProfile.themePreference
 
-                        val syncedProfile = savedProfile.copy(role = role, householdId = householdId, canManageHousehold = canManage)
+                        val syncedProfile = savedProfile.copy(
+                            role = role, 
+                            householdId = householdId, 
+                            canManageHousehold = canManage,
+                            themePreference = themePref
+                        )
                         activeUser = syncedProfile
                         UserPreferences.saveUser(context, syncedProfile)
                     }
@@ -183,6 +190,10 @@ fun AppRoot() {
                         isDarkMode = newDark
                         UserPreferences.saveDarkMode(context, newDark)
                     },
+                    onProfileUpdated = { updatedUser ->
+                        activeUser = updatedUser
+                        UserPreferences.saveUser(context, updatedUser)
+                    },
                     onSignOut = {
                         auth.signOut()
                         UserPreferences.clear(context)
@@ -218,9 +229,9 @@ fun handleUserAuthSuccess(
 
     Log.d("AUTH_DEBUG", "Step 1: Initiating handleUserAuthSuccess for uid='$uid', email='$rawEmail', retryCount=$retryCount")
 
-    fun completeRouting(householdId: String, role: Role, name: String, canManage: Boolean) {
+    fun completeRouting(householdId: String, role: Role, name: String, canManage: Boolean, themePref: String = "DEFAULT") {
         Log.d("AUTH_DEBUG", "Complete Routing -> Auto-linking householdId='$householdId' into users/$uid. Target: DASHBOARD")
-        val profile = UserProfile(uid, name, rawEmail, role, householdId, canManage)
+        val profile = UserProfile(uid, name, rawEmail, role, householdId, canManage, themePref)
         UserPreferences.saveUser(context, profile)
 
         // Automatically link persistent householdId field at users/{userId}
@@ -231,7 +242,8 @@ fun handleUserAuthSuccess(
                 "email" to rawEmail,
                 "role" to role.name,
                 "householdId" to householdId,
-                "canManageHousehold" to canManage
+                "canManageHousehold" to canManage,
+                "themePreference" to themePref
             ),
             SetOptions.merge()
         )
@@ -268,13 +280,14 @@ fun handleUserAuthSuccess(
                 Log.d("AUTH_DEBUG", "STAGE 1 Result -> users/$uid snapshotExists=$snapshotExists, data=${userDoc?.data}")
 
                 val hid = userDoc?.getString("householdId")
+                val themePref = userDoc?.getString("themePreference") ?: "DEFAULT"
                 if (snapshotExists && !hid.isNullOrBlank()) {
                     val name = userDoc.getString("name") ?: rawEmail.substringBefore("@").ifBlank { "User" }
                     val roleStr = userDoc.getString("role") ?: "OWNER"
                     val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
                     val canManage = userDoc.getBoolean("canManageHousehold") ?: (role == Role.OWNER || role == Role.ADMIN)
                     
-                    completeRouting(hid, role, name, canManage)
+                    completeRouting(hid, role, name, canManage, themePref)
                     return@addOnSuccessListener
                 }
 
@@ -291,7 +304,8 @@ fun handleUserAuthSuccess(
                             val roleStr = emailDoc?.getString("role") ?: "OWNER"
                             val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
                             val canManage = emailDoc?.getBoolean("canManageHousehold") ?: (role == Role.OWNER || role == Role.ADMIN)
-                            completeRouting(emailHid, role, name, canManage)
+                            val tPref = emailDoc?.getString("themePreference") ?: "DEFAULT"
+                            completeRouting(emailHid, role, name, canManage, tPref)
                             return@addOnSuccessListener
                         }
 
@@ -334,7 +348,8 @@ fun handleUserAuthSuccess(
                                                     val roleStr = memberGroupDoc.getString("role") ?: "MEMBER"
                                                     val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
                                                     val canManage = memberGroupDoc.getBoolean("canManageHousehold") ?: false
-                                                    completeRouting(recoveredHid, role, name, canManage)
+                                                    val tPref = memberGroupDoc.getString("themePreference") ?: "DEFAULT"
+                                                    completeRouting(recoveredHid, role, name, canManage, tPref)
                                                     return@addOnSuccessListener
                                                 }
 
@@ -348,7 +363,8 @@ fun handleUserAuthSuccess(
                                                             val roleStr = emailMemberDoc.getString("role") ?: "MEMBER"
                                                             val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
                                                             val canManage = emailMemberDoc.getBoolean("canManageHousehold") ?: false
-                                                            completeRouting(recoveredEmailHid, role, name, canManage)
+                                                            val tPref = emailMemberDoc.getString("themePreference") ?: "DEFAULT"
+                                                            completeRouting(recoveredEmailHid, role, name, canManage, tPref)
                                                         } else {
                                                             retryOrFail()
                                                         }
@@ -592,7 +608,7 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
                                 val user = task.result?.user
                                 val uid = user?.uid ?: UUID.randomUUID().toString()
                                 val name = trimmedEmail.substringBefore("@")
-                                val profile = UserProfile(uid, name, trimmedEmail, Role.OWNER, null, false)
+                                val profile = UserProfile(uid, name, trimmedEmail, Role.OWNER, null, false, "DEFAULT")
 
                                 // Create user document in Firestore
                                 val userMap = hashMapOf(
@@ -601,7 +617,8 @@ fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
                                     "email" to trimmedEmail,
                                     "role" to "OWNER",
                                     "householdId" to null,
-                                    "canManageHousehold" to false
+                                    "canManageHousehold" to false,
+                                    "themePreference" to "DEFAULT"
                                 )
                                 db.collection("users").document(uid).set(userMap)
                                     .addOnSuccessListener {
@@ -691,7 +708,8 @@ fun OnboardingScreen(
             "email" to updatedUser.email,
             "role" to updatedUser.role.name,
             "householdId" to updatedUser.householdId,
-            "canManageHousehold" to updatedUser.canManageHousehold
+            "canManageHousehold" to updatedUser.canManageHousehold,
+            "themePreference" to updatedUser.themePreference
         )
 
         // 1. Save to users/{uid}
