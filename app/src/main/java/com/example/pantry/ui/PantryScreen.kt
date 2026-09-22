@@ -520,9 +520,8 @@ fun EditItemDialog(
     var priceText by remember { mutableStateOf(if (item.price > 0) item.price.toString() else "") }
     var lowStockThresholdText by remember { mutableStateOf(item.lowStockThreshold.toString()) }
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Edit Item", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

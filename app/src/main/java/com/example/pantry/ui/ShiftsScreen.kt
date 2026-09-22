@@ -434,9 +434,8 @@ fun LogSplitShiftDialog(
 
     val context = LocalContext.current
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Log Home Depot Split Shift", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -527,9 +526,8 @@ fun ArchivedPayHistoryDialog(
     archivedPeriods: List<ArchivedPayCycle>,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Archived Pay Periods", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
             if (archivedPeriods.isEmpty()) {

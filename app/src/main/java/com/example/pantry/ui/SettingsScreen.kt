@@ -451,9 +451,8 @@ fun HouseholdFeedbackFeedDialog(
         else feedbackList.filter { it.topic.equals(selectedFilter, ignoreCase = true) }
     }
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Household Feedback Feed", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
@@ -678,9 +677,8 @@ fun ManageHouseholdDialog(
         (memberList + userList).distinctBy { it.uid }
     }
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = {
             Column {
                 Text("Household Members", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
@@ -850,9 +848,8 @@ fun SendFeedbackDialog(
     val context = LocalContext.current
     val db = Firebase.firestore
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Send Feedback", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
             Column(
@@ -1004,9 +1001,8 @@ fun SettingsToggleRow(
 
 @Composable
 fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Privacy Policy", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(
@@ -1049,9 +1045,8 @@ fun EditProfileDialog(
     val db = Firebase.firestore
     val auth = Firebase.auth
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Edit Profile & Security", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(

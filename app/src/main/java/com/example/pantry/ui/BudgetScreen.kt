@@ -467,9 +467,8 @@ fun AddBillDialog(
 
     val context = LocalContext.current
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Add Recurring Monthly Bill", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -536,9 +535,8 @@ fun AddTransactionDialog(
 
     val context = LocalContext.current
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Log Out-of-Pocket Expense", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -603,9 +601,8 @@ fun EditBudgetLimitDialog(
     var limitText by remember { mutableStateOf(if (currentLimit > 0) currentLimit.toString() else "") }
     val context = LocalContext.current
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Edit Monthly Budget Cap", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -654,9 +651,8 @@ fun EditBillDialog(
 
     val context = LocalContext.current
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1C1C1E),
         title = { Text("Edit Monthly Bill", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

@@ -412,9 +412,8 @@ fun AppUpdateDialog(
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableFloatStateOf(0f) }
 
-    AlertDialog(
+    LiquidGlassDialog(
         onDismissRequest = { if (!isDownloading) onDismiss() },
-        containerColor = Color(0xFF1C1C1E),
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("New Update Available", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)

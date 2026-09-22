@@ -155,10 +155,8 @@ fun InventoryCard(
     }
 
     if (showDeleteConfirm) {
-        AlertDialog(
+        LiquidGlassDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            containerColor = Color(0xFF1C1C1E),
-            shape = RoundedCornerShape(24.dp),
             title = {
                 Text(
                     text = "Delete Item",
