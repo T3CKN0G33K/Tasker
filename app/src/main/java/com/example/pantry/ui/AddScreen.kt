@@ -29,9 +29,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import com.example.liquidglass.GlassMaterial
-import com.example.liquidglass.LiquidGlassView
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -56,9 +53,9 @@ fun GlassStepperButton(
     modifier: Modifier = Modifier
 ) {
     val buttonBg = if (isPlus) {
-        Color(0xFF007AFF).copy(alpha = 0.40f) // Vibrant translucent blue tint for (+)
+        Color(0xFF007AFF).copy(alpha = 0.40f) // Translucent blue tint for (+)
     } else {
-        Color.White.copy(alpha = 0.15f) // Subtle translucent grey/white tint for (-)
+        Color.White.copy(alpha = 0.15f) // Translucent white/grey tint for (-)
     }
 
     val buttonBorder = Brush.verticalGradient(
@@ -75,61 +72,27 @@ fun GlassStepperButton(
         }
     )
 
-    // Outer Box: Size -> Clip -> Clickable order ensures 100% full-surface touch target
+    // Pure Compose Glass Button: 100% surface clickability with zero AndroidView touch interception!
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(48.dp)
             .clip(CircleShape)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = true, radius = 22.dp)
-            ) { onClick() }
             .background(buttonBg)
             .border(
                 width = 1.dp,
                 brush = buttonBorder,
                 shape = CircleShape
-            ),
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = true, radius = 24.dp)
+            ) { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        // Native Glass Layer (Set to non-clickable so it doesn't intercept touch events from parent Box)
-        AndroidView(
-            factory = { context ->
-                LiquidGlassView(context).apply {
-                    cornerRadius = context.resources.displayMetrics.density * 22f
-                    enableBackdropBlur = true
-                    enableChromaticAberration = true
-                    enableChromaticDispersion = true
-                    enableEdgeHighlight = true
-                    edgeHighlightBorderWidth = 1.0f
-                    edgeHighlightOpacity = 100f
-                    bevelWidth = 12f
-                    refractionHeight = 18f
-                    dispersionStrength = 0.10f
-                    material = GlassMaterial.CLEAR
-                    glassTint = if (isPlus) {
-                        android.graphics.Color.argb(50, 0, 122, 255)
-                    } else {
-                        android.graphics.Color.argb(25, 255, 255, 255)
-                    }
-                    useShaderPipeline = false
-                    
-                    // Disable native View touch listeners so parent Compose Box handles clicks reliably!
-                    isClickable = false
-                    isFocusable = false
-                    isEnabled = false
-                }
-            },
-            update = { glassView ->
-                glassView.invalidate()
-            },
-            modifier = Modifier.matchParentSize()
-        )
-
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = Color.White, // Crisp white icons for maximum contrast!
+            tint = Color.White,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -156,48 +119,19 @@ fun GlassHeroButton(
             .fillMaxWidth()
             .height(56.dp)
             .clip(RoundedCornerShape(16.dp))
-            .clickable(
-                enabled = enabled,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = true)
-            ) { onClick() }
             .background(buttonBg)
             .border(
                 width = 1.5.dp,
                 brush = buttonBorder,
                 shape = RoundedCornerShape(16.dp)
-            ),
+            )
+            .clickable(
+                enabled = enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = true)
+            ) { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        // Native Chromatic Dispersion Glass Effect Layer (Non-clickable layer)
-        AndroidView(
-            factory = { context ->
-                LiquidGlassView(context).apply {
-                    cornerRadius = context.resources.displayMetrics.density * 16f
-                    enableBackdropBlur = true
-                    enableChromaticAberration = true
-                    enableChromaticDispersion = true
-                    enableEdgeHighlight = true
-                    edgeHighlightBorderWidth = 1.0f
-                    edgeHighlightOpacity = 100f
-                    bevelWidth = 20f
-                    refractionHeight = 28f
-                    dispersionStrength = 0.12f
-                    material = GlassMaterial.CLEAR
-                    glassTint = android.graphics.Color.argb(40, 0, 122, 255)
-                    useShaderPipeline = false
-                    
-                    isClickable = false
-                    isFocusable = false
-                    isEnabled = false
-                }
-            },
-            update = { glassView ->
-                glassView.invalidate()
-            },
-            modifier = Modifier.matchParentSize()
-        )
-
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -300,7 +234,7 @@ fun AddScreen(
             fontWeight = FontWeight.Bold
         )
 
-        // 1. Walmart Barcode Scanner Hero Glass Button with Chromatic Dispersion
+        // 1. Walmart Barcode Scanner Hero Glass Button
         GlassHeroButton(
             onClick = { startBarcodeScan() },
             enabled = !isScanning,
@@ -527,7 +461,7 @@ fun AddScreen(
             )
         }
 
-        // 7. Save to Pantry Hero Glass Button with Chromatic Dispersion
+        // 7. Save to Pantry Hero Glass Button
         GlassHeroButton(
             onClick = {
                 if (itemName.isNotBlank()) {

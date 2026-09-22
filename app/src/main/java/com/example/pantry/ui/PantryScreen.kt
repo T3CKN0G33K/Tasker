@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
@@ -366,7 +367,6 @@ fun PantryItemCard(
     val formattedQty = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else String.format(Locale.US, "%.2f", item.quantity)
 
     val textMain = if (isDarkMode) Color.White else Color.Black
-    val pillBg = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E5EA)
 
     // Upgraded Outer Container to Frosted Glass Card Shell
     GlassCard(
@@ -442,33 +442,31 @@ fun PantryItemCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    IconButton(
+                    GlassStepperButton(
+                        icon = Icons.Default.Remove,
+                        contentDescription = "Decrease Quantity",
                         onClick = { if (item.quantity > 0) onQuantityChange((item.quantity - 0.25).coerceAtLeast(0.0)) },
-                        modifier = Modifier
-                            .size(32.dp)
-                            .background(pillBg, CircleShape)
-                    ) {
-                        Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = textMain, modifier = Modifier.size(16.dp))
-                    }
+                        isPlus = false
+                    )
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = formattedQty,
                             color = Color.White,
                             fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.widthIn(min = 32.dp)
                         )
                         Text(text = item.unit, color = Color.Gray, fontSize = 10.sp)
                     }
 
-                    IconButton(
+                    GlassStepperButton(
+                        icon = Icons.Default.Add,
+                        contentDescription = "Increase Quantity",
                         onClick = { onQuantityChange(item.quantity + 1.0) },
-                        modifier = Modifier
-                            .size(32.dp)
-                            .background(Color(0xFF007AFF), CircleShape)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Increase", tint = Color.White, modifier = Modifier.size(16.dp))
-                    }
+                        isPlus = true
+                    )
                 }
             }
 
@@ -483,6 +481,7 @@ fun PantryItemCard(
                     "3/4 (75%)" to 0.75,
                     "Full (1.0)" to 1.00
                 )
+                val pillBg = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E5EA)
                 fillLevels.forEach { (label, value) ->
                     val isCurrent = abs(item.quantity - value) < 0.05
                     Box(
