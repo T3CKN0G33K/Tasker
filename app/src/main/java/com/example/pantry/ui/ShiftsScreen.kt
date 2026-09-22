@@ -103,10 +103,8 @@ fun ShiftsScreen(
 
     val activePeriodRange = "Aug 10, 2026 - Aug 23, 2026"
 
-    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
-    val cardBg = if (isDarkMode) Color(0xFF1C1C1E) else Color.White
     val textMain = if (isDarkMode) Color.White else Color.Black
-    val textSub = if (isDarkMode) Color.Gray else Color(0xFF6C6C70)
+    val textSub = if (isDarkMode) Color.LightGray else Color(0xFF6C6C70)
 
     // Real-time Firestore Sync for Active Split Shifts & Archived Pay Periods
     LaunchedEffect(currentUser.householdId) {
@@ -171,14 +169,15 @@ fun ShiftsScreen(
     val totalDeductions = oasdiTax + medicareTax + federalTax + maStateTax + fixedBenefits
     val netTakeHomePay = (grossPaycheck - totalDeductions).coerceAtLeast(0.0)
 
+    // Unblock Background -> Color.Transparent for edge-to-edge ambient theme gradient!
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(screenBg)
+            .background(Color.Transparent)
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 64.dp, bottom = 120.dp, start = 20.dp, end = 20.dp),
+            contentPadding = PaddingValues(top = 64.dp, bottom = 140.dp, start = 20.dp, end = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
@@ -194,24 +193,18 @@ fun ShiftsScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    IconButton(
+                    GlassStepperButton(
+                        icon = Icons.Default.History,
+                        contentDescription = "History",
                         onClick = { showArchivedHistoryDialog = true },
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(cardBg)
-                    ) {
-                        Icon(Icons.Default.History, contentDescription = "History", tint = Color(0xFF007AFF))
-                    }
+                        isPlus = false
+                    )
                 }
             }
 
-            // Home Depot Pay Period & Net Pay Engine Card
+            // Home Depot Pay Period & Net Pay Engine Card (Upgraded to GlassCard)
             item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardBg)
-                ) {
+                GlassCard(isDarkMode = isDarkMode) {
                     Column(
                         modifier = Modifier.padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -225,7 +218,7 @@ fun ShiftsScreen(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF007AFF).copy(alpha = 0.2f))
+                                    .background(Color(0xFF007AFF).copy(alpha = 0.25f))
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text(activePeriodRange, color = Color(0xFF007AFF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -235,12 +228,12 @@ fun ShiftsScreen(
                         Text("Calculated Net Take-Home Pay", color = textSub, fontSize = 12.sp)
                         Text(
                             text = "$${String.format(Locale.US, "%.2f", netTakeHomePay)}",
-                            color = Color(0xFF34C759),
+                            color = Color.White,
                             fontSize = 36.sp,
                             fontWeight = FontWeight.Bold
                         )
 
-                        HorizontalDivider(color = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), thickness = 0.5.dp)
+                        HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp)
 
                         // Payroll Breakdown Grid
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -268,18 +261,16 @@ fun ShiftsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Button(
+                            GlassHeroButton(
                                 onClick = { showLogShiftDialog = true },
-                                modifier = Modifier.weight(1f).height(48.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
+                                modifier = Modifier.weight(1f).height(48.dp)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Log Split Shift", color = Color.White, fontWeight = FontWeight.Bold)
                             }
 
-                            Button(
+                            GlassHeroButton(
                                 onClick = {
                                     if (currentShifts.isNotEmpty()) {
                                         currentUser.householdId?.let { hid ->
@@ -303,13 +294,11 @@ fun ShiftsScreen(
                                         Toast.makeText(context, "Pay Period Closed & Archived!", Toast.LENGTH_SHORT).show()
                                     }
                                 },
-                                modifier = Modifier.weight(1f).height(48.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA))
+                                modifier = Modifier.weight(1f).height(48.dp)
                             ) {
-                                Icon(Icons.Default.Archive, contentDescription = null, tint = textSub, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Archive, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Archive Cycle", color = textMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                Text("Archive Cycle", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                             }
                         }
                     }
@@ -338,11 +327,7 @@ fun ShiftsScreen(
                 }
             } else {
                 items(currentShifts, key = { "shift_" + it.id }) { shift ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = cardBg)
-                    ) {
+                    GlassCard(isDarkMode = isDarkMode) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -354,7 +339,7 @@ fun ShiftsScreen(
                                 modifier = Modifier
                                     .size(42.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isDarkMode) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)),
+                                    .background(if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Default.Schedule, contentDescription = null, tint = Color(0xFF007AFF), modifier = Modifier.size(20.dp))
@@ -375,27 +360,24 @@ fun ShiftsScreen(
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
                                     text = "$${String.format(Locale.US, "%.2f", shift.grossEarnings)}",
-                                    color = Color(0xFF34C759),
+                                    color = Color.White,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Text("$20.16/hr", color = textSub, fontSize = 10.sp)
-                            }
 
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            IconButton(
-                                onClick = {
-                                    currentShifts = currentShifts.filter { it.id != shift.id }
-                                    currentUser.householdId?.let { hid ->
-                                        db.collection("households").document(hid)
-                                            .collection("split_shifts").document(shift.id)
-                                            .delete()
-                                    }
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete Shift", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                TextButton(
+                                    onClick = {
+                                        currentUser.householdId?.let { hid ->
+                                            db.collection("households").document(hid)
+                                                .collection("split_shifts").document(shift.id)
+                                                .delete()
+                                        }
+                                        currentShifts = currentShifts.filter { it.id != shift.id }
+                                    },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Delete", color = Color(0xFFFF3B30), fontSize = 11.sp)
+                                }
                             }
                         }
                     }
@@ -404,33 +386,24 @@ fun ShiftsScreen(
         }
     }
 
+    // Dialogs
     if (showLogShiftDialog) {
-        LogSplitShiftWithCalendarDialog(
+        LogSplitShiftDialog(
             onDismiss = { showLogShiftDialog = false },
-            onLog = { selectedDateStr, cIn1, cOut1, cIn2, cOut2 ->
-                val newShift = SplitShiftEntry(
-                    id = UUID.randomUUID().toString(),
-                    date = selectedDateStr,
-                    clockIn1 = cIn1,
-                    clockOut1 = cOut1,
-                    clockIn2 = cIn2,
-                    clockOut2 = cOut2,
-                    hourlyRate = 20.16
-                )
+            onLog = { newShift ->
                 currentShifts = listOf(newShift) + currentShifts
 
                 currentUser.householdId?.let { hid ->
-                    val docRef = db.collection("households").document(hid).collection("split_shifts").document(newShift.id)
-                    docRef.set(
-                        hashMapOf(
-                            "date" to selectedDateStr,
-                            "clockIn1" to cIn1,
-                            "clockOut1" to cOut1,
-                            "clockIn2" to cIn2,
-                            "clockOut2" to cOut2,
-                            "hourlyRate" to 20.16
-                        )
+                    val docRef = db.collection("households").document(hid).collection("split_shifts").document()
+                    val data = hashMapOf(
+                        "date" to newShift.date,
+                        "clockIn1" to newShift.clockIn1,
+                        "clockOut1" to newShift.clockOut1,
+                        "clockIn2" to newShift.clockIn2,
+                        "clockOut2" to newShift.clockOut2,
+                        "hourlyRate" to newShift.hourlyRate
                     )
+                    docRef.set(data)
                 }
                 showLogShiftDialog = false
             }
@@ -438,108 +411,105 @@ fun ShiftsScreen(
     }
 
     if (showArchivedHistoryDialog) {
-        ArchivedCyclesDialog(
-            cycles = archivedPeriods,
+        ArchivedPayHistoryDialog(
+            archivedPeriods = archivedPeriods,
             onDismiss = { showArchivedHistoryDialog = false }
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LogSplitShiftWithCalendarDialog(
+fun LogSplitShiftDialog(
     onDismiss: () -> Unit,
-    onLog: (date: String, cIn1: String, cOut1: String, cIn2: String, cOut2: String) -> Unit
+    onLog: (SplitShiftEntry) -> Unit
 ) {
-    var dateText by remember { mutableStateOf(SimpleDateFormat("MMM dd, yyyy", Locale.US).format(Date())) }
-    var clockIn1Text by remember { mutableStateOf("20:50") }
-    var clockOut1Text by remember { mutableStateOf("01:00") }
-    var clockIn2Text by remember { mutableStateOf("01:30") }
-    var clockOut2Text by remember { mutableStateOf("05:20") }
+    val sdf = SimpleDateFormat("MMM d, yyyy", Locale.US)
+    var dateStr by remember { mutableStateOf(sdf.format(Date())) }
 
-    var showDatePicker by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState()
+    var clockIn1 by remember { mutableStateOf("20:50") }
+    var clockOut1 by remember { mutableStateOf("01:00") }
+    var clockIn2 by remember { mutableStateOf("01:30") }
+    var clockOut2 by remember { mutableStateOf("05:20") }
+    var rateText by remember { mutableStateOf("20.16") }
+
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF1C1C1E),
-        title = { Text("Log Overnight Split Shift", color = Color.White, fontWeight = FontWeight.Bold) },
+        title = { Text("Log Home Depot Split Shift", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Tap date below to pick shift date on calendar:", color = Color.Gray, fontSize = 12.sp)
+                OutlinedTextField(
+                    value = dateStr,
+                    onValueChange = { dateStr = it },
+                    label = { Text("Shift Date", color = Color.Gray) },
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
 
-                // Interactive Calendar Date Picker Field
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF2C2C2E))
-                        .clickable { showDatePicker = true }
-                        .padding(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = "Date: $dateText", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Icon(Icons.Default.CalendarToday, contentDescription = "Pick Date", tint = Color(0xFF007AFF), modifier = Modifier.size(18.dp))
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(2.dp))
-
+                Text("LEG 1 (FIRST HALF)", color = Color(0xFF007AFF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
-                        value = clockIn1Text,
-                        onValueChange = { clockIn1Text = it },
-                        label = { Text("In 1 (e.g. 20:50)", color = Color.Gray) },
+                        value = clockIn1,
+                        onValueChange = { clockIn1 = it },
+                        label = { Text("Clock In 1 (20:50)", color = Color.Gray) },
                         modifier = Modifier.weight(1f),
-                        singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
                     )
                     OutlinedTextField(
-                        value = clockOut1Text,
-                        onValueChange = { clockOut1Text = it },
-                        label = { Text("Out 1 (e.g. 01:00)", color = Color.Gray) },
+                        value = clockOut1,
+                        onValueChange = { clockOut1 = it },
+                        label = { Text("Clock Out 1 (01:00)", color = Color.Gray) },
                         modifier = Modifier.weight(1f),
-                        singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
                     )
                 }
 
+                Text("LEG 2 (SECOND HALF)", color = Color(0xFF007AFF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
-                        value = clockIn2Text,
-                        onValueChange = { clockIn2Text = it },
-                        label = { Text("In 2 (e.g. 01:30)", color = Color.Gray) },
+                        value = clockIn2,
+                        onValueChange = { clockIn2 = it },
+                        label = { Text("Clock In 2 (01:30)", color = Color.Gray) },
                         modifier = Modifier.weight(1f),
-                        singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
                     )
                     OutlinedTextField(
-                        value = clockOut2Text,
-                        onValueChange = { clockOut2Text = it },
-                        label = { Text("Out 2 (e.g. 05:20)", color = Color.Gray) },
+                        value = clockOut2,
+                        onValueChange = { clockOut2 = it },
+                        label = { Text("Clock Out 2 (05:20)", color = Color.Gray) },
                         modifier = Modifier.weight(1f),
-                        singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
                     )
                 }
+
+                OutlinedTextField(
+                    value = rateText,
+                    onValueChange = { rateText = it },
+                    label = { Text("Hourly Rate ($)", color = Color.Gray) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (clockIn1Text.isNotBlank() && clockOut1Text.isNotBlank()) {
-                        onLog(
-                            dateText,
-                            clockIn1Text.trim(),
-                            clockOut1Text.trim(),
-                            clockIn2Text.trim(),
-                            clockOut2Text.trim()
-                        )
+                    val rate = rateText.toDoubleOrNull() ?: 20.16
+                    if (clockIn1.isBlank() || clockOut1.isBlank()) {
+                        Toast.makeText(context, "Please enter at least Leg 1 clock in/out times.", Toast.LENGTH_SHORT).show()
+                        return@Button
                     }
+                    val newEntry = SplitShiftEntry(
+                        id = UUID.randomUUID().toString(),
+                        date = dateStr.trim(),
+                        clockIn1 = clockIn1.trim(),
+                        clockOut1 = clockOut1.trim(),
+                        clockIn2 = clockIn2.trim(),
+                        clockOut2 = clockOut2.trim(),
+                        hourlyRate = rate
+                    )
+                    onLog(newEntry)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
             ) {
@@ -550,84 +520,50 @@ fun LogSplitShiftWithCalendarDialog(
             TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
         }
     )
-
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        datePickerState.selectedDateMillis?.let { millis ->
-                            // FIX: Force TimeZone to UTC to prevent day-before offset shifts!
-                            val utcFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US).apply {
-                                timeZone = TimeZone.getTimeZone("UTC")
-                            }
-                            dateText = utcFormat.format(Date(millis))
-                        }
-                        showDatePicker = false
-                    }
-                ) {
-                    Text("OK", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancel", color = Color.Gray) }
-            },
-            colors = DatePickerDefaults.colors(containerColor = Color(0xFF1C1C1E))
-        ) {
-            DatePicker(
-                state = datePickerState,
-                colors = DatePickerDefaults.colors(
-                    containerColor = Color(0xFF1C1C1E),
-                    titleContentColor = Color.White,
-                    headlineContentColor = Color.White,
-                    weekdayContentColor = Color.Gray,
-                    subheadContentColor = Color.White,
-                    dayContentColor = Color.White,
-                    selectedDayContainerColor = Color(0xFF007AFF),
-                    selectedDayContentColor = Color.White
-                )
-            )
-        }
-    }
 }
 
 @Composable
-fun ArchivedCyclesDialog(
-    cycles: List<ArchivedPayCycle>,
+fun ArchivedPayHistoryDialog(
+    archivedPeriods: List<ArchivedPayCycle>,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF1C1C1E),
-        title = { Text("Archived Pay Periods", color = Color.White, fontWeight = FontWeight.Bold) },
+        title = { Text("Archived Pay Periods", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                if (cycles.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
-                        Text("No closed pay periods archived yet.", color = Color.Gray, fontSize = 14.sp)
-                    }
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(cycles, key = { "cycle_" + it.id }) { cycle ->
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF2C2C2E))
+            if (archivedPeriods.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                    Text("No archived pay periods yet.", color = Color.Gray, fontSize = 14.sp)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(archivedPeriods, key = { it.id }) { cycle ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF2C2C2E),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(cycle.periodRange, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("${String.format(Locale.US, "%.1f", cycle.totalHours)} Hours", color = Color.Gray, fontSize = 12.sp)
-                                        Text("Net: $${String.format(Locale.US, "%.2f", cycle.netTakeHome)}", color = Color(0xFF34C759), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                Column {
+                                    Text(cycle.periodRange, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text("${String.format(Locale.US, "%.1f", cycle.totalHours)} total hours • Gross: $${String.format(Locale.US, "%.2f", cycle.grossPay)}", color = Color.Gray, fontSize = 11.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = "$${String.format(Locale.US, "%.2f", cycle.netTakeHome)}",
+                                        color = Color(0xFF34C759),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
+                                    Text("Net Pay", color = Color(0xFF34C759), fontSize = 10.sp)
                                 }
                             }
                         }
@@ -636,7 +572,7 @@ fun ArchivedCyclesDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close", color = Color(0xFF0A84FF), fontWeight = FontWeight.Bold) }
+            TextButton(onClick = onDismiss) { Text("Close", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold) }
         }
     )
 }
