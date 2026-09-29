@@ -37,8 +37,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.material.icons.filled.CalendarMonth
 import com.example.liquidglass.GlassMaterial
+import com.example.liquidglass.LiquidGlassTabBarCompose
+import com.example.liquidglass.LiquidGlassTabItem
 import com.example.liquidglass.LiquidGlassView
+import com.example.pantry.notifications.NotificationHelper
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
 
@@ -47,188 +51,25 @@ fun LiquidGlassTabBarComponent(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit,
     isDarkMode: Boolean,
+    themePreference: String = "DEFAULT",
     modifier: Modifier = Modifier
 ) {
     val tabs = listOf(
-        Triple(0, "Pantry", Icons.AutoMirrored.Filled.List),
-        Triple(1, "Add", Icons.Default.Add),
-        Triple(2, "Budget", Icons.Default.AccountBalanceWallet),
-        Triple(3, "Shifts", Icons.Default.Schedule),
-        Triple(4, "Settings", Icons.Default.Settings)
+        LiquidGlassTabItem(0, "Pantry", Icons.AutoMirrored.Filled.List),
+        LiquidGlassTabItem(1, "Calendar", Icons.Default.CalendarMonth),
+        LiquidGlassTabItem(2, "Budget", Icons.Default.AccountBalanceWallet),
+        LiquidGlassTabItem(3, "Shifts", Icons.Default.Schedule),
+        LiquidGlassTabItem(4, "Settings", Icons.Default.Settings)
     )
 
-    var containerWidth by remember { mutableFloatStateOf(0f) }
-    var dragOffsetX by remember { mutableFloatStateOf(0f) }
-    var isDragging by remember { mutableStateOf(false) }
-
-    val innerPaddingPx = with(LocalDensity.current) { 4.dp.toPx() }
-    val availableWidth = (containerWidth - 2 * innerPaddingPx).coerceAtLeast(0f)
-    val tabWidth = if (availableWidth > 0f) availableWidth / tabs.size else 0f
-
-    val activeIndex = if (isDragging && tabWidth > 0f) {
-        ((dragOffsetX - innerPaddingPx) / tabWidth).toInt().coerceIn(0, tabs.size - 1)
-    } else {
-        selectedTab
-    }
-
-    val maxOffset = (tabs.size - 1) * tabWidth
-
-    val targetOffset = if (isDragging && tabWidth > 0f) {
-        (dragOffsetX - innerPaddingPx - (tabWidth / 2f)).coerceIn(0f, maxOffset)
-    } else if (tabWidth > 0f) {
-        selectedTab * tabWidth
-    } else {
-        0f
-    }
-
-    val animatedOffset by animateFloatAsState(
-        targetValue = targetOffset,
-        animationSpec = if (isDragging) {
-            spring(stiffness = Spring.StiffnessHigh)
-        } else {
-            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
-        },
-        label = "DropletLensSlide"
-    )
-
-    // Container: Lightweight Translucent Pill
-    Box(
+    LiquidGlassTabBarCompose(
+        tabs = tabs,
+        selectedTab = selectedTab,
+        onTabSelected = onTabSelected,
+        isDarkMode = isDarkMode,
+        themePreference = themePreference,
         modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
-            .height(64.dp)
-            .onSizeChanged { containerWidth = it.width.toFloat() }
-            .clip(RoundedCornerShape(32.dp))
-            .background(
-                color = if (isDarkMode) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.70f)
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = if (isDarkMode) {
-                        listOf(Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.10f))
-                    } else {
-                        listOf(Color.White, Color.White.copy(alpha = 0.50f))
-                    }
-                ),
-                shape = RoundedCornerShape(32.dp)
-            )
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragStart = { offset ->
-                        isDragging = true
-                        dragOffsetX = offset.x.coerceIn(innerPaddingPx, containerWidth - innerPaddingPx)
-                    },
-                    onDragEnd = {
-                        isDragging = false
-                        if (tabWidth > 0f) {
-                            val finalIndex = ((dragOffsetX - innerPaddingPx) / tabWidth).toInt().coerceIn(0, tabs.size - 1)
-                            onTabSelected(finalIndex)
-                        }
-                    },
-                    onDragCancel = {
-                        isDragging = false
-                    },
-                    onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
-                        dragOffsetX = (dragOffsetX + dragAmount).coerceIn(innerPaddingPx, containerWidth - innerPaddingPx)
-                    }
-                )
-            }
-            .padding(4.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        // LAYER 1: Sliding "Droplet" Glass Lens (ONLY part that uses Native JNI Glass/Blur!)
-        if (containerWidth > 0f && tabWidth > 0f) {
-            val cornerPx = with(LocalDensity.current) { 26.dp.toPx() }
-            Box(
-                modifier = Modifier
-                    .offset(x = with(LocalDensity.current) { animatedOffset.toDp() })
-                    .width(with(LocalDensity.current) { tabWidth.toDp() })
-                    .fillMaxHeight()
-                    .padding(2.dp)
-                    .clip(RoundedCornerShape(26.dp))
-            ) {
-                AndroidView(
-                    factory = { context ->
-                        LiquidGlassView(context).apply {
-                            cornerRadius = cornerPx
-                            enableBackdropBlur = true
-                            enableChromaticAberration = true
-                            enableEdgeHighlight = true
-                            edgeHighlightBorderWidth = 1.0f
-                            edgeHighlightOpacity = 100f
-                            bevelWidth = 16f
-                            refractionHeight = 24f
-                            dispersionStrength = 0.08f
-                            material = GlassMaterial.CLEAR
-                            glassTint = android.graphics.Color.argb(45, 255, 255, 255)
-                            useShaderPipeline = false
-                        }
-                    },
-                    update = { droplet ->
-                        droplet.cornerRadius = cornerPx
-                        droplet.invalidate()
-                    },
-                    modifier = Modifier.matchParentSize()
-                )
-            }
-        }
-
-        // LAYER 2: Higher Z-index Tab Icons & Text (Sit crisply ON TOP of sliding droplet lens)
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            tabs.forEach { (index, label, icon) ->
-                val isSelected = index == activeIndex
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(1f)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            onTabSelected(index)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = label,
-                            tint = if (isSelected) {
-                                Color(0xFF007AFF)
-                            } else if (isDarkMode) {
-                                Color.White.copy(alpha = 0.65f)
-                            } else {
-                                Color.Black.copy(alpha = 0.55f)
-                            },
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = label,
-                            color = if (isSelected) {
-                                if (isDarkMode) Color.White else Color.Black
-                            } else if (isDarkMode) {
-                                Color.White.copy(alpha = 0.65f)
-                            } else {
-                                Color.Black.copy(alpha = 0.55f)
-                            },
-                            fontSize = 10.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        )
-                    }
-                }
-            }
-        }
-    }
+    )
 }
 
 @Composable
@@ -249,6 +90,8 @@ fun DashboardScreen(
 
     val db = Firebase.firestore
 
+    val previousStockState = remember { mutableMapOf<String, Double>() }
+
     // Real-time Firestore Sync at Dashboard level (Persists across tab switches)
     LaunchedEffect(currentUser.householdId) {
         currentUser.householdId?.let { householdId ->
@@ -264,12 +107,29 @@ fun DashboardScreen(
                             val lowStockThreshold = doc.getDouble("lowStockThreshold") ?: doc.getLong("lowStockThreshold")?.toDouble() ?: 1.0
                             val quantity = doc.getDouble("quantity") ?: doc.getLong("quantity")?.toDouble() ?: 0.0
                             val price = doc.getDouble("price") ?: 0.0
+                            val name = doc.getString("name") ?: ""
+                            val unit = doc.getString("unit") ?: "Units"
+
+                            val prevQty = previousStockState[doc.id]
+                            val isNowLow = quantity <= lowStockThreshold
+                            val wasLow = prevQty != null && prevQty <= lowStockThreshold
+
+                            if (isNowLow && (!wasLow || (prevQty != null && quantity < prevQty))) {
+                                NotificationHelper.showLowStockNotification(
+                                    context = context,
+                                    itemName = name,
+                                    quantity = quantity,
+                                    unit = unit
+                                )
+                            }
+                            previousStockState[doc.id] = quantity
+
                             PantryItem(
                                 id = doc.id,
-                                name = doc.getString("name") ?: "",
+                                name = name,
                                 category = doc.getString("category") ?: "",
                                 quantity = quantity,
-                                unit = doc.getString("unit") ?: "Units",
+                                unit = unit,
                                 lowStockThreshold = lowStockThreshold,
                                 price = price
                             )
@@ -322,20 +182,27 @@ fun DashboardScreen(
         }
     }
 
-    val screenBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
+    val ambientMeshGradient = Brush.linearGradient(
+        colors = listOf(
+            Color(0xFF0B132B),
+            Color(0xFF083344).copy(alpha = 0.85f),
+            Color(0xFF0F172A),
+            Color(0xFF06B6D4).copy(alpha = 0.25f)
+        )
+    )
+
+    val purpleMeshGradient = Brush.linearGradient(
+        colors = listOf(
+            Color(0xFF1E0A3C),
+            Color(0xFF3B1566).copy(alpha = 0.85f),
+            Color(0xFF120524),
+            Color(0xFF9E6BC2).copy(alpha = 0.30f)
+        )
+    )
 
     val bgModifier = when (currentUser.themePreference.uppercase()) {
-        "PURPLE" -> Modifier.background(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFF9E6BC2), Color(0xFF734199))
-            )
-        )
-        "CYAN" -> Modifier.background(
-            brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFF4DD0E1), Color(0xFF0097A9))
-            )
-        )
-        else -> Modifier.background(screenBg)
+        "PURPLE" -> Modifier.background(purpleMeshGradient)
+        else -> if (isDarkMode) Modifier.background(ambientMeshGradient) else Modifier.background(Color(0xFFF2F2F7))
     }
 
     // 1. Root Container (Single Fullscreen Box for Floating Overlay)
@@ -348,92 +215,88 @@ fun DashboardScreen(
         AnimatedContent(
             targetState = selectedTab,
             transitionSpec = {
-                fadeIn(animationSpec = tween(250)) togetherWith 
-                fadeOut(animationSpec = tween(250))
+                fadeIn(animationSpec = tween(180)) togetherWith 
+                fadeOut(animationSpec = tween(180))
             },
             label = "ScreenTransition"
         ) { targetTab ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .systemBarsPadding()
-            ) {
-                when (targetTab) {
-                    0 -> PantryScreen(
-                        items = pantryItems,
-                        isDarkMode = isDarkMode,
-                        themePreference = currentUser.themePreference,
-                        onItemUpdate = { updatedItem ->
-                            currentUser.householdId?.let { hid ->
-                                val itemMap = hashMapOf(
-                                    "name" to updatedItem.name,
-                                    "category" to updatedItem.category,
-                                    "quantity" to updatedItem.quantity,
-                                    "unit" to updatedItem.unit,
-                                    "lowStockThreshold" to updatedItem.lowStockThreshold,
-                                    "price" to updatedItem.price
-                                )
-                                db.collection("households").document(hid)
-                                    .collection("inventory").document(updatedItem.id)
-                                    .set(itemMap)
-                            }
-                        },
-                        onItemDelete = { itemId ->
-                            currentUser.householdId?.let { hid ->
-                                db.collection("households").document(hid)
-                                    .collection("inventory").document(itemId)
-                                    .delete()
-                            }
-                        }
-                    )
-                    1 -> AddScreen(
-                        isDarkMode = isDarkMode,
-                        onAddItem = { newItem ->
-                            if (currentUser.householdId == null) {
-                                Toast.makeText(context, "Error: No Household ID found on profile.", Toast.LENGTH_LONG).show()
-                                return@AddScreen
-                            }
-
-                            currentUser.householdId?.let { hid ->
-                                val docRef = db.collection("households").document(hid).collection("inventory").document()
-                                val itemMap = hashMapOf(
-                                    "name" to newItem.name,
-                                    "category" to newItem.category,
-                                    "quantity" to newItem.quantity,
-                                    "unit" to newItem.unit,
-                                    "lowStockThreshold" to newItem.lowStockThreshold,
-                                    "price" to newItem.price
-                                )
-                                
-                                docRef.set(itemMap)
-                                    .addOnSuccessListener {
-                                        Toast.makeText(context, "Saved to Pantry!", Toast.LENGTH_SHORT).show()
+            key(targetTab) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .systemBarsPadding()
+                ) {
+                    when (targetTab) {
+                        0 -> PantryScreen(
+                            items = pantryItems,
+                            isDarkMode = isDarkMode,
+                            themePreference = currentUser.themePreference,
+                            onItemUpdate = { updatedItem ->
+                                try {
+                                    currentUser.householdId?.let { hid ->
+                                        val itemMap = hashMapOf(
+                                            "name" to updatedItem.name,
+                                            "category" to updatedItem.category,
+                                            "quantity" to updatedItem.quantity,
+                                            "unit" to updatedItem.unit,
+                                            "lowStockThreshold" to updatedItem.lowStockThreshold,
+                                            "price" to updatedItem.price
+                                        )
+                                        db.collection("households").document(hid)
+                                            .collection("inventory").document(updatedItem.id)
+                                            .set(itemMap)
                                     }
-                                    .addOnFailureListener { e ->
-                                        Toast.makeText(context, "Save failed: ${e.message}", Toast.LENGTH_LONG).show()
+                                } catch (_: Exception) {}
+                            },
+                            onItemDelete = { itemId ->
+                                try {
+                                    currentUser.householdId?.let { hid ->
+                                        db.collection("households").document(hid)
+                                            .collection("inventory").document(itemId)
+                                            .delete()
                                     }
+                                } catch (_: Exception) {}
+                            },
+                            onAddItem = { newItem ->
+                                try {
+                                    currentUser.householdId?.let { hid ->
+                                        val docRef = db.collection("households").document(hid).collection("inventory").document()
+                                        val itemMap = hashMapOf(
+                                            "name" to newItem.name,
+                                            "category" to newItem.category,
+                                            "quantity" to newItem.quantity,
+                                            "unit" to newItem.unit,
+                                            "lowStockThreshold" to newItem.lowStockThreshold,
+                                            "price" to newItem.price
+                                        )
+                                        docRef.set(itemMap)
+                                    }
+                                } catch (_: Exception) {}
                             }
-                            selectedTab = 0 // Auto-route back to pantry
-                        }
-                    )
-                    2 -> BudgetScreen(
-                        currentUser = currentUser,
-                        isDarkMode = isDarkMode,
-                        transactions = budgetTransactions,
-                        bills = monthlyBills,
-                        monthlyLimit = monthlyBudgetLimit,
-                        onUpdateTransactions = { updatedTx -> budgetTransactions = updatedTx },
-                        onUpdateBills = { updatedBills -> monthlyBills = updatedBills },
-                        onUpdateMonthlyLimit = { updatedLimit -> monthlyBudgetLimit = updatedLimit }
-                    )
-                    3 -> ShiftsScreen(currentUser = currentUser, isDarkMode = isDarkMode)
-                    4 -> SettingsScreen(
-                        currentUser = currentUser,
-                        isDarkMode = isDarkMode,
-                        onToggleDarkMode = onToggleDarkMode,
-                        onProfileUpdated = onProfileUpdated,
-                        onSignOut = onSignOut
-                    )
+                        )
+                        1 -> CalendarScreen(
+                            currentUser = currentUser,
+                            isDarkMode = isDarkMode
+                        )
+                        2 -> BudgetScreen(
+                            currentUser = currentUser,
+                            isDarkMode = isDarkMode,
+                            transactions = budgetTransactions,
+                            bills = monthlyBills,
+                            monthlyLimit = monthlyBudgetLimit,
+                            onUpdateTransactions = { updatedTx -> budgetTransactions = updatedTx },
+                            onUpdateBills = { updatedBills -> monthlyBills = updatedBills },
+                            onUpdateMonthlyLimit = { updatedLimit -> monthlyBudgetLimit = updatedLimit }
+                        )
+                        3 -> ShiftsScreen(currentUser = currentUser, isDarkMode = isDarkMode)
+                        4 -> SettingsScreen(
+                            currentUser = currentUser,
+                            isDarkMode = isDarkMode,
+                            onToggleDarkMode = onToggleDarkMode,
+                            onProfileUpdated = onProfileUpdated,
+                            onSignOut = onSignOut
+                        )
+                    }
                 }
             }
         }
@@ -448,7 +311,8 @@ fun DashboardScreen(
             LiquidGlassTabBarComponent(
                 selectedTab = selectedTab,
                 onTabSelected = { newIndex -> selectedTab = newIndex },
-                isDarkMode = isDarkMode
+                isDarkMode = isDarkMode,
+                themePreference = currentUser.themePreference
             )
         }
     }

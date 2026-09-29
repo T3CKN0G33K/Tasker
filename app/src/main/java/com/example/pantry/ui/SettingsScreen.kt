@@ -39,6 +39,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.os.Build
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import com.google.firebase.Firebase
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.auth
@@ -50,10 +56,11 @@ import com.google.firebase.firestore.firestore
 fun GlassCard(
     modifier: Modifier = Modifier,
     isDarkMode: Boolean = true,
+    shape: Shape = RoundedCornerShape(20.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
     val cardBg = if (isDarkMode) {
-        Color.White.copy(alpha = 0.10f)
+        Color.White.copy(alpha = 0.12f)
     } else {
         Color.White.copy(alpha = 0.70f)
     }
@@ -61,8 +68,8 @@ fun GlassCard(
     val cardBorder = if (isDarkMode) {
         Brush.verticalGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.40f),
-                Color.White.copy(alpha = 0.10f)
+                Color.White.copy(alpha = 0.45f),
+                Color.White.copy(alpha = 0.12f)
             )
         )
     } else {
@@ -74,18 +81,44 @@ fun GlassCard(
         )
     }
 
-    Column(
+Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(cardBg)
-            .border(
-                width = 1.dp,
-                brush = cardBorder,
-                shape = RoundedCornerShape(20.dp)
-            ),
-        content = content
-    )
+            .clip(shape)
+    ) {
+        // LAYER 1: Isolated Glass Backdrop (NDK Blur & Refraction Lens applied ONLY to background)
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val androidBlur = RenderEffect.createBlurEffect(
+                            20f * density,
+                            20f * density,
+                            Shader.TileMode.CLAMP
+                        )
+                        renderEffect = androidBlur.asComposeRenderEffect()
+                    }
+                }
+                .refractionLens(
+                    refractionHeightPx = 16f,
+                    refractionAmountPx = -14f,
+                    chromaticAberration = 0f
+                )
+                .background(cardBg)
+                .border(
+                    width = 1.dp,
+                    brush = cardBorder,
+                    shape = shape
+                )
+        )
+
+        // LAYER 2: Crisp Content Layer (100% sharp text & icons - NEVER subjected to blur/refraction!)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            content = content
+        )
+    }
 }
 
 @Composable
@@ -265,12 +298,12 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 1. DEFAULT Option
+                    // 1. DEFAULT Option (Deep Blue/Cyan Ambient Gradient)
                     ThemeOptionButton(
                         label = "Default",
-                        selected = currentUser.themePreference.equals("DEFAULT", ignoreCase = true),
+                        selected = currentUser.themePreference.equals("DEFAULT", ignoreCase = true) || currentUser.themePreference.equals("CYAN", ignoreCase = true),
                         previewBrush = Brush.verticalGradient(
-                            colors = if (isDarkMode) listOf(Color(0xFF1C1C1E), Color.Black) else listOf(Color.White, Color(0xFFF2F2F7))
+                            colors = if (isDarkMode) listOf(Color(0xFF0B132B), Color(0xFF06B6D4)) else listOf(Color.White, Color(0xFFF2F2F7))
                         ),
                         isDarkMode = isDarkMode,
                         onClick = {
@@ -279,26 +312,12 @@ fun SettingsScreen(
                         }
                     )
 
-                    // 2. CYAN Option
-                    ThemeOptionButton(
-                        label = "Cyan",
-                        selected = currentUser.themePreference.equals("CYAN", ignoreCase = true),
-                        previewBrush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFF4DD0E1), Color(0xFF0097A9))
-                        ),
-                        isDarkMode = isDarkMode,
-                        onClick = {
-                            val updated = currentUser.copy(themePreference = "CYAN")
-                            updateUserTheme(updated, db, context, onProfileUpdated)
-                        }
-                    )
-
-                    // 3. PURPLE Option
+                    // 2. PURPLE Option (Deep Violet/Midnight Purple Ambient Gradient)
                     ThemeOptionButton(
                         label = "Purple",
                         selected = currentUser.themePreference.equals("PURPLE", ignoreCase = true),
                         previewBrush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFF9E6BC2), Color(0xFF734199))
+                            colors = listOf(Color(0xFF1E0A3C), Color(0xFF9E6BC2))
                         ),
                         isDarkMode = isDarkMode,
                         onClick = {
@@ -987,7 +1006,7 @@ fun SettingsToggleRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(iconBg),
+            modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(iconBg),
             contentAlignment = Alignment.Center
         ) {
             Icon(imageVector = icon, contentDescription = text, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -997,7 +1016,12 @@ fun SettingsToggleRow(
         Switch(
             checked = checked, 
             onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF34C759))
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White, 
+                checkedTrackColor = Color(0xFF007AFF),
+                uncheckedThumbColor = Color.LightGray,
+                uncheckedTrackColor = Color.White.copy(alpha = 0.20f)
+            )
         )
     }
 }

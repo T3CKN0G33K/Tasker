@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -44,6 +45,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.example.pantry.notifications.NotificationHelper
 import java.util.Locale
 import java.util.UUID
 
@@ -59,6 +67,27 @@ fun AppRoot() {
 
     val db = Firebase.firestore
     val auth = Firebase.auth
+
+    // Notification Permission Request (Android 13+)
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            NotificationHelper.createNotificationChannels(context)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                NotificationHelper.createNotificationChannels(context)
+            }
+        } else {
+            NotificationHelper.createNotificationChannels(context)
+        }
+    }
 
     // Dynamic System Status Bar Appearance (Prevents washed out status bar text in Light Mode!)
     val view = LocalView.current
@@ -141,9 +170,22 @@ fun AppRoot() {
         }
     }
 
-    val rootBg = if (isDarkMode) Color.Black else Color(0xFFF2F2F7)
+    val ambientMeshGradient = Brush.linearGradient(
+        colors = listOf(
+            Color(0xFF0B132B),
+            Color(0xFF083344).copy(alpha = 0.85f),
+            Color(0xFF0F172A),
+            Color(0xFF06B6D4).copy(alpha = 0.25f)
+        )
+    )
 
-    Box(modifier = Modifier.fillMaxSize().background(rootBg)) {
+    val rootBgModifier = if (isDarkMode) {
+        Modifier.background(brush = ambientMeshGradient)
+    } else {
+        Modifier.background(Color(0xFFF2F2F7))
+    }
+
+    Box(modifier = Modifier.fillMaxSize().then(rootBgModifier)) {
         AnimatedContent(
             targetState = currentAppState,
             transitionSpec = {

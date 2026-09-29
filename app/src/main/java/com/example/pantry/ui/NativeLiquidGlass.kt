@@ -77,6 +77,9 @@ half4 main(float2 coord) {
     float2 grad = normalize(gradSdRoundedRect(centeredCoord, halfSize, gradRadius) + depthEffect * normalize(centeredCoord));
     
     float2 refractedCoord = coord + d * grad;
+    if (chromaticAberration <= 0.001) {
+        return content.eval(refractedCoord);
+    }
     float dispersionIntensity = chromaticAberration * ((centeredCoord.x * centeredCoord.y) / (halfSize.x * halfSize.y));
     float2 dispersedCoord = d * grad * dispersionIntensity;
     
@@ -119,15 +122,17 @@ half4 main(float2 coord) {
 """
 
 fun Modifier.refractionLens(
-    refractionHeightPx: Float = 28f,
-    refractionAmountPx: Float = -28f,
-    chromaticAberration: Float = 1.2f
+    refractionHeightPx: Float = 16f,
+    refractionAmountPx: Float = -14f,
+    chromaticAberration: Float = 0.4f,
+    cornerRadiusPx: Float? = null
 ): Modifier = this.graphicsLayer {
+    if (size.width <= 0f || size.height <= 0f) return@graphicsLayer
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         val runtimeShader = RuntimeShader(RefractionAGSL).apply {
             setFloatUniform("size", size.width, size.height)
             setFloatUniform("offset", 0f, 0f)
-            val r = size.minDimension / 2f
+            val r = cornerRadiusPx ?: (20f * density)
             setFloatUniform("cornerRadii", r, r, r, r)
             setFloatUniform("refractionHeight", refractionHeightPx)
             setFloatUniform("refractionAmount", refractionAmountPx)

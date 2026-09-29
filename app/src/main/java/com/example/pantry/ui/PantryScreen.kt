@@ -1,13 +1,21 @@
 package com.example.pantry.ui
 
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.os.Build
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -28,13 +37,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.example.liquidglass.ChromaticDispersionPresets
+import com.example.liquidglass.LiquidGlassListItem
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import org.json.JSONObject
+import java.io.IOException
 import java.util.Locale
-import kotlin.math.abs
+import java.util.UUID
 import kotlin.math.ceil
 
 data class PantryItem(
@@ -62,15 +91,23 @@ fun PantryScreen(
     themePreference: String = "DEFAULT",
     onItemsChange: (List<PantryItem>) -> Unit = {},
     onItemUpdate: (PantryItem) -> Unit = {},
-    onItemDelete: (String) -> Unit = {}
+    onItemDelete: (String) -> Unit = {},
+    onAddItem: (PantryItem) -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var isSearchExpanded by remember { mutableStateOf(false) }
     var selectedCategoryFilter by remember { mutableStateOf("All") }
     var itemToEdit by remember { mutableStateOf<PantryItem?>(null) }
+    var showAddItemDialog by remember { mutableStateOf(false) }
 
     val textMain = if (isDarkMode) Color.White else Color.Black
     val textSub = if (isDarkMode) Color.LightGray else Color(0xFF6C6C70)
+
+    val activeAccentColor = if (themePreference.equals("PURPLE", ignoreCase = true)) {
+        Color(0xFFC084FC)
+    } else {
+        Color(0xFF007AFF)
+    }
 
     val categoryList = remember(items) {
         listOf("All") + items.map { it.category }.distinct().filter { it.isNotBlank() }
@@ -86,7 +123,6 @@ fun PantryScreen(
         }
     }
 
-    // Low Stock Restock Budget Estimate Calculation
     val lowStockItems = remember(items) { items.filter { it.quantity <= it.lowStockThreshold } }
     val totalRestockEstimate = remember(lowStockItems) {
         lowStockItems.sumOf { item ->
@@ -95,7 +131,6 @@ fun PantryScreen(
         }
     }
 
-    // Unblock Background -> Color.Transparent so root dynamic gradient shines through!
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -105,19 +140,131 @@ fun PantryScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(top = 72.dp, bottom = 140.dp, start = 16.dp, end = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = "My Pantry",
-                        color = textMain,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "My Pantry",
+                            color = textMain,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold
+                        )
 
-                    // Low Stock Restock Budget Estimate Card (Upgraded to GlassCard)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            IconButton(
+                                onClick = { isSearchExpanded = !isSearchExpanded },
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.10f))
+                                    .border(
+                                        width = 0.5.dp,
+                                        color = Color.White.copy(alpha = 0.25f),
+                                        shape = CircleShape
+                                    )
+                            ) {
+                                Icon(
+                                    imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { showAddItemDialog = true },
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(activeAccentColor)
+                                    .border(
+                                        width = 0.5.dp,
+                                        color = Color.White.copy(alpha = 0.40f),
+                                        shape = CircleShape
+                                    )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Add Item",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    AnimatedContent(
+                        targetState = isSearchExpanded,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
+                        },
+                        label = "SearchPillTransition"
+                    ) { expanded ->
+                        if (expanded) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.75f))
+                                    .border(
+                                        width = 0.5.dp,
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.12f))
+                                        ),
+                                        shape = RoundedCornerShape(24.dp)
+                                    )
+                                    .padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = textSub,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = textMain, fontSize = 16.sp),
+                                    decorationBox = { innerTextField ->
+                                        if (searchQuery.isEmpty()) {
+                                            Text("Search Pantry...", color = textSub, fontSize = 16.sp)
+                                        }
+                                        innerTextField()
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { searchQuery = "" },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Clear",
+                                            tint = textSub,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     GlassCard(isDarkMode = isDarkMode) {
                         Row(
                             modifier = Modifier
@@ -129,9 +276,11 @@ fun PantryScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
-                                        .size(42.dp)
+                                        .size(44.dp)
                                         .clip(RoundedCornerShape(12.dp))
-                                        .background(if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.25f) else Color(0xFF34C759).copy(alpha = 0.25f)),
+                                        .background(
+                                            if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.25f) else Color(0xFF34C759).copy(alpha = 0.25f)
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
@@ -143,11 +292,11 @@ fun PantryScreen(
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text("Low Stock Restock Estimate", color = textSub, fontSize = 12.sp)
+                                    Text("Low Stock Restock Estimate", color = textSub, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                     Text(
                                         text = "$${String.format(Locale.US, "%.2f", totalRestockEstimate)}",
                                         color = textMain,
-                                        fontSize = 22.sp,
+                                        fontSize = 24.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -155,8 +304,10 @@ fun PantryScreen(
 
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.25f) else if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E5EA))
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (lowStockItems.isNotEmpty()) Color(0xFFFF3B30).copy(alpha = 0.25f) else Color(0xFF34C759).copy(alpha = 0.20f)
+                                    )
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(
@@ -169,7 +320,6 @@ fun PantryScreen(
                         }
                     }
 
-                    // Category Filter Chips Bar (Frosted Glass Pills)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -178,22 +328,22 @@ fun PantryScreen(
                     ) {
                         categoryList.take(5).forEach { category ->
                             val isSelected = selectedCategoryFilter == category
-                            val chipBg = if (isSelected) Color(0xFF007AFF) else if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.70f)
+                            val chipBg = if (isSelected) activeAccentColor else Color.White.copy(alpha = 0.08f)
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(20.dp))
                                     .background(chipBg)
                                     .border(
-                                        width = 1.dp,
-                                        color = if (isSelected) Color(0xFF007AFF) else if (isDarkMode) Color.White.copy(alpha = 0.20f) else Color.White,
+                                        width = 0.5.dp,
+                                        color = if (isSelected) activeAccentColor else Color.White.copy(alpha = 0.15f),
                                         shape = RoundedCornerShape(20.dp)
                                     )
                                     .clickable { selectedCategoryFilter = category }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
                             ) {
                                 Text(
                                     text = category,
-                                    color = if (isSelected) Color.White else textSub,
+                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.65f),
                                     fontSize = 12.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 )
@@ -212,7 +362,7 @@ fun PantryScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (searchQuery.isNotBlank() || selectedCategoryFilter != "All") "No matching items found." else "Your Pantry is empty! Tap 'Add' to restock.",
+                            text = if (searchQuery.isNotBlank() || selectedCategoryFilter != "All") "No matching items found." else "Your Pantry is empty! Tap '+' to add items.",
                             style = MaterialTheme.typography.bodyLarge,
                             color = textSub
                         )
@@ -223,6 +373,7 @@ fun PantryScreen(
                     PantryItemCard(
                         item = item,
                         isDarkMode = isDarkMode,
+                        themePreference = themePreference,
                         onQuantityChange = { newQty ->
                             onItemUpdate(item.copy(quantity = newQty))
                         },
@@ -232,115 +383,20 @@ fun PantryScreen(
             }
         }
 
-        // LAYER 2: Sleek Floating Glass Search Button / Expanded Liquid Glass Search Input (Top End)
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .statusBarsPadding()
-                .padding(top = 12.dp, end = 16.dp, start = 16.dp)
-        ) {
-            AnimatedContent(
-                targetState = isSearchExpanded,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
-                },
-                label = "SearchExpandTransition"
-            ) { expanded ->
-                if (expanded) {
-                    // Expanded Liquid Glass Search Pill Input
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.75f))
-                            .border(
-                                width = 1.dp,
-                                brush = Brush.verticalGradient(
-                                    colors = if (isDarkMode) {
-                                        listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.12f))
-                                    } else {
-                                        listOf(Color.White, Color.White.copy(alpha = 0.50f))
-                                    }
-                                ),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .padding(horizontal = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = textSub,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        BasicTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = textMain, fontSize = 16.sp),
-                            decorationBox = { innerTextField ->
-                                if (searchQuery.isEmpty()) {
-                                    Text("Search Pantry...", color = textSub, fontSize = 16.sp)
-                                }
-                                innerTextField()
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        IconButton(
-                            onClick = {
-                                if (searchQuery.isNotEmpty()) {
-                                    searchQuery = ""
-                                } else {
-                                    isSearchExpanded = false
-                                }
-                            },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Close Search",
-                                tint = textSub,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                } else {
-                    // Collapsed Sleek Circular Liquid Glass Search Button
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.75f))
-                            .border(
-                                width = 1.dp,
-                                brush = Brush.verticalGradient(
-                                    colors = if (isDarkMode) {
-                                        listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.12f))
-                                    } else {
-                                        listOf(Color.White, Color.White.copy(alpha = 0.50f))
-                                    }
-                                ),
-                                shape = CircleShape
-                            )
-                            .clickable { isSearchExpanded = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = textMain,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
+    // Add Item Centered Glass Popup Dialog
+    if (showAddItemDialog) {
+        AddItemCenteredDialog(
+            themePreference = themePreference,
+            onDismiss = { showAddItemDialog = false },
+            onSave = { newItem ->
+                onAddItem(newItem)
+                showAddItemDialog = false
             }
-        }
+        )
     }
+}
 
-    // Edit Modal
+    // Edit Item Dialog
     itemToEdit?.let { item ->
         EditItemDialog(
             item = item,
@@ -359,153 +415,388 @@ fun PantryScreen(
 }
 
 @Composable
-fun PantryItemCard(
-    item: PantryItem,
-    isDarkMode: Boolean = true,
-    onQuantityChange: (Double) -> Unit,
-    onEdit: () -> Unit
+fun AddItemCenteredDialog(
+    themePreference: String = "DEFAULT",
+    onDismiss: () -> Unit,
+    onSave: (PantryItem) -> Unit
 ) {
-    val isLowStock = item.quantity <= item.lowStockThreshold
-    val formattedQty = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else String.format(Locale.US, "%.2f", item.quantity)
+    var name by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("Dry Goods") }
+    var unit by remember { mutableStateOf("Units") }
+    var quantityText by remember { mutableStateOf("1") }
+    var priceText by remember { mutableStateOf("") }
+    var lowStockThresholdText by remember { mutableStateOf("1") }
+    var isScanning by remember { mutableStateOf(false) }
 
-    val textMain = if (isDarkMode) Color.White else Color.Black
+    val context = LocalContext.current
+    val categories = listOf("Dry Goods", "Beverages", "Pet Care", "Household")
 
-    // Upgraded Outer Container to Frosted Glass Card Shell
-    GlassCard(
-        isDarkMode = isDarkMode,
-        modifier = Modifier.clickable { onEdit() }
+    val activeAccentColor = if (themePreference.equals("PURPLE", ignoreCase = true)) {
+        Color(0xFFC084FC)
+    } else {
+        Color(0xFF007AFF)
+    }
+
+    fun startBarcodeScan() {
+        try {
+            val options = GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(
+                    Barcode.FORMAT_UPC_A,
+                    Barcode.FORMAT_UPC_E,
+                    Barcode.FORMAT_EAN_13,
+                    Barcode.FORMAT_EAN_8,
+                    Barcode.FORMAT_ALL_FORMATS
+                )
+                .enableAutoZoom()
+                .build()
+
+            val scanner = GmsBarcodeScanning.getClient(context, options)
+            scanner.startScan()
+                .addOnSuccessListener { barcode ->
+                    val rawValue = barcode.rawValue
+                    if (!rawValue.isNullOrBlank()) {
+                        isScanning = true
+                        lookupBarcodeProduct(
+                            barcode = rawValue,
+                            onSuccess = { scannedName, scannedCategory ->
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    isScanning = false
+                                    name = scannedName
+                                    category = scannedCategory
+                                }
+                            },
+                            onError = { _ ->
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    isScanning = false
+                                }
+                            }
+                        )
+                    }
+                }
+                .addOnCanceledListener {
+                    isScanning = false
+                }
+                .addOnFailureListener {
+                    isScanning = false
+                }
+        } catch (_: Exception) {
+            isScanning = false
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            contentAlignment = Alignment.Center
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            GlassCard(
+                isDarkMode = true,
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .wrapContentHeight()
+                    .clip(RoundedCornerShape(24.dp))
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF161B22).copy(alpha = 0.94f))
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Title Row with Close "X" Button
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Category Tag
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(Color(0xFF007AFF).copy(alpha = 0.25f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        Text(
+                            text = "Add Item to Pantry",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(28.dp)
                         ) {
-                            Text(
-                                text = item.category.uppercase(),
-                                color = Color(0xFF007AFF),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color.White.copy(alpha = 0.70f),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
+                    }
 
-                        // Low Stock Restock Warning Badge
-                        if (isLowStock) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .background(Color(0xFFFF3B30).copy(alpha = 0.25f))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    val inputColors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White.copy(alpha = 0.10f),
+                        unfocusedContainerColor = Color.White.copy(alpha = 0.10f),
+                        focusedBorderColor = activeAccentColor,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.20f),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+
+                    // Item Name Input with Trailing Barcode Scanner Action Button
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        placeholder = { Text("Item Name", color = Color.White.copy(alpha = 0.60f)) },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { startBarcodeScan() },
+                                enabled = !isScanning
                             ) {
-                                Text(
-                                    text = "LOW STOCK",
-                                    color = Color(0xFFFF3B30),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                if (isScanning) {
+                                    CircularProgressIndicator(
+                                        color = activeAccentColor,
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.QrCodeScanner,
+                                        contentDescription = "Scan Barcode",
+                                        tint = activeAccentColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        singleLine = true,
+                        colors = inputColors
+                    )
+
+                    OutlinedTextField(
+                        value = priceText,
+                        onValueChange = { priceText = it },
+                        placeholder = { Text("Unit Price ($ e.g. 6.98)", color = Color.White.copy(alpha = 0.60f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        colors = inputColors
+                    )
+
+                    Text("Category", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .padding(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            categories.forEach { cat ->
+                                val isSelected = category == cat
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) activeAccentColor else Color.Transparent)
+                                        .clickable { category = cat },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = cat,
+                                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.65f),
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(text = item.name, color = textMain, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    
-                    // Unit Price Tag
-                    if (item.price > 0) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "$${String.format(Locale.US, "%.2f", item.price)} / ${item.unit.take(5)}",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-
-                // Stepper Quantity Controls
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    GlassStepperButton(
-                        icon = Icons.Default.Remove,
-                        contentDescription = "Decrease Quantity",
-                        onClick = { if (item.quantity > 0) onQuantityChange((item.quantity - 0.25).coerceAtLeast(0.0)) },
-                        isPlus = false
-                    )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = formattedQty,
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.widthIn(min = 32.dp)
-                        )
-                        Text(text = item.unit, color = Color.Gray, fontSize = 10.sp)
-                    }
-
-                    GlassStepperButton(
-                        icon = Icons.Default.Add,
-                        contentDescription = "Increase Quantity",
-                        onClick = { onQuantityChange(item.quantity + 1.0) },
-                        isPlus = true
-                    )
-                }
-            }
-
-            // Quick Fractional Fill Level Selector Pills
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                val fillLevels = listOf(
-                    "1/4 (25%)" to 0.25,
-                    "1/2 (50%)" to 0.50,
-                    "3/4 (75%)" to 0.75,
-                    "Full (1.0)" to 1.00
-                )
-                val pillBg = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFE5E5EA)
-                fillLevels.forEach { (label, value) ->
-                    val isCurrent = abs(item.quantity - value) < 0.05
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isCurrent) Color(0xFF007AFF) else pillBg)
-                            .clickable { onQuantityChange(value) }
-                            .padding(vertical = 6.dp),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = label,
-                            color = if (isCurrent) Color.White else if (isDarkMode) Color.LightGray else Color(0xFF6C6C70),
-                            fontSize = 10.sp,
-                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
+                        OutlinedTextField(
+                            value = quantityText,
+                            onValueChange = { quantityText = it },
+                            label = { Text("Quantity", color = Color.White.copy(alpha = 0.70f)) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            colors = inputColors
                         )
+
+                        OutlinedTextField(
+                            value = lowStockThresholdText,
+                            onValueChange = { lowStockThresholdText = it },
+                            label = { Text("Low Stock Alert", color = Color.White.copy(alpha = 0.70f)) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            colors = inputColors
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    GlassHeroButton(
+                        onClick = {
+                            if (name.isBlank()) {
+                                Toast.makeText(context, "Please enter an item name.", Toast.LENGTH_SHORT).show()
+                                return@GlassHeroButton
+                            }
+                            val parsedQty = quantityText.toDoubleOrNull() ?: 1.0
+                            val threshold = lowStockThresholdText.toDoubleOrNull() ?: 1.0
+                            val parsedPrice = priceText.toDoubleOrNull() ?: 0.0
+                            val newItem = PantryItem(
+                                id = UUID.randomUUID().toString(),
+                                name = name.trim(),
+                                category = category,
+                                quantity = parsedQty,
+                                unit = unit.ifBlank { "Units" },
+                                lowStockThreshold = threshold,
+                                price = parsedPrice
+                            )
+                            onSave(newItem)
+                        },
+                        modifier = Modifier.fillMaxWidth().height(50.dp)
+                    ) {
+                        Text("Save to Pantry", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+fun PantryItemCard(
+    item: PantryItem,
+    isDarkMode: Boolean = true,
+    themePreference: String = "DEFAULT",
+    onQuantityChange: (Double) -> Unit,
+    onEdit: () -> Unit
+) {
+    val isLowStock = item.quantity <= item.lowStockThreshold
+    val formattedQty = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else String.format(Locale.US, "%.2f", item.quantity)
+    val textMain = if (isDarkMode) Color.White else Color.Black
+
+    val activeAccentColor = if (themePreference.equals("PURPLE", ignoreCase = true)) {
+        Color(0xFFC084FC)
+    } else {
+        Color(0xFF007AFF)
+    }
+
+    val subtitleText = buildString {
+        append(item.category.uppercase())
+        if (isLowStock) {
+            append(" • LOW STOCK")
+        }
+        if (item.price > 0) {
+            append(" • $${String.format(Locale.US, "%.2f", item.price)} / ${item.unit.take(5)}")
+        }
+    }
+
+    LiquidGlassListItem(
+        title = item.name,
+        subtitle = subtitleText,
+        preset = ChromaticDispersionPresets.Standard,
+        isDarkMode = isDarkMode,
+        onClick = onEdit,
+        leadingIcon = {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isLowStock) Color(0xFFFF3B30).copy(alpha = 0.25f) else activeAccentColor.copy(alpha = 0.20f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isLowStock) Icons.Default.ShoppingCart else Icons.Default.Search,
+                    contentDescription = null,
+                    tint = if (isLowStock) Color(0xFFFF3B30) else activeAccentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        },
+        trailingContent = {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.35f),
+                                Color.White.copy(alpha = 0.10f)
+                            )
+                        ),
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    IconButton(
+                        onClick = { if (item.quantity > 0) onQuantityChange((item.quantity - 0.25).coerceAtLeast(0.0)) },
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Remove,
+                            contentDescription = "Decrease Quantity",
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    ) {
+                        Text(
+                            text = formattedQty,
+                            color = textMain,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = item.unit.take(5),
+                            color = Color.White.copy(alpha = 0.60f),
+                            fontSize = 9.sp
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { onQuantityChange(item.quantity + 1.0) },
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Increase Quantity",
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+    )
 }
 
 @Composable

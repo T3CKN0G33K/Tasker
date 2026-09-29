@@ -26,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.liquidglass.ChromaticDispersionPresets
+import com.example.liquidglass.LiquidGlassListItem
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
@@ -265,45 +267,32 @@ fun BudgetScreenContent(
         // List Content Section
         if (selectedSubTab == BudgetSubTab.BILLS) {
             items(sortedBills, key = { it.id.ifBlank { it.name + it.dueDate } }) { bill ->
-                GlassCard(
+                LiquidGlassListItem(
+                    title = bill.name,
+                    subtitle = bill.dueDate,
+                    preset = ChromaticDispersionPresets.Standard,
                     isDarkMode = isDarkMode,
-                    modifier = Modifier.clickable { billToEdit = bill }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Checkbox(
-                                checked = bill.isPaid,
-                                onCheckedChange = { isChecked ->
-                                    val updated = bills.map { if (it.id == bill.id || (it.name == bill.name && it.dueDate == bill.dueDate)) it.copy(isPaid = isChecked) else it }
-                                    onUpdateBills(updated)
+                    onClick = { billToEdit = bill },
+                    leadingIcon = {
+                        Checkbox(
+                            checked = bill.isPaid,
+                            onCheckedChange = { isChecked ->
+                                val updated = bills.map { if (it.id == bill.id || (it.name == bill.name && it.dueDate == bill.dueDate)) it.copy(isPaid = isChecked) else it }
+                                onUpdateBills(updated)
 
-                                    currentUser.householdId?.let { hid ->
-                                        db.collection("households").document(hid)
-                                            .collection("bills").document(bill.id)
-                                            .update("isPaid", isChecked)
-                                    }
-                                },
-                                colors = CheckboxDefaults.colors(
-                                    checkedColor = Color(0xFF34C759),
-                                    uncheckedColor = textSub
-                                )
+                                currentUser.householdId?.let { hid ->
+                                    db.collection("households").document(hid)
+                                        .collection("bills").document(bill.id)
+                                        .update("isPaid", isChecked)
+                                }
+                            },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Color(0xFF34C759),
+                                uncheckedColor = textSub
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(bill.name, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                                Text(bill.dueDate, color = textSub, fontSize = 12.sp)
-                            }
-                        }
-
+                        )
+                    },
+                    trailingContent = {
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 text = "$${String.format(Locale.US, "%.2f", bill.amount)}",
@@ -326,31 +315,51 @@ fun BudgetScreenContent(
                             }
                         }
                     }
-                }
+                )
             }
         } else {
             items(transactions, key = { it.id.ifBlank { it.title + it.date } }) { tx ->
-                GlassCard(isDarkMode = isDarkMode) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(tx.title, color = textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            Text("${tx.date} • ${tx.account}", color = textSub, fontSize = 12.sp)
-                        }
+                LiquidGlassListItem(
+                    title = tx.title,
+                    subtitle = "${tx.date} • ${tx.account}",
+                    preset = ChromaticDispersionPresets.Standard,
+                    isDarkMode = isDarkMode,
+                    trailingContent = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "-$${String.format(Locale.US, "%.2f", abs(tx.amount))}",
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            IconButton(
+                                onClick = {
+                                    val updated = transactions.filter { it.id != tx.id }
+                                    onUpdateTransactions(updated)
 
-                        Text(
-                            text = "-$${String.format(Locale.US, "%.2f", abs(tx.amount))}",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                                    currentUser.householdId?.let { hid ->
+                                        if (tx.id.isNotBlank()) {
+                                            db.collection("households").document(hid)
+                                                .collection("transactions").document(tx.id)
+                                                .delete()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete Expense",
+                                    tint = Color(0xFFFF3B30).copy(alpha = 0.8f),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
-                }
+                )
             }
         }
     }
