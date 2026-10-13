@@ -9,7 +9,9 @@ data class UserProfile(
     val role: Role,
     val householdId: String? = null,
     val canManageHousehold: Boolean = false,
-    val themePreference: String = "DEFAULT" // "DEFAULT", "CYAN", "PURPLE"
+    val themePreference: String = "DEFAULT", // "DEFAULT", "CYAN", "PURPLE"
+    val sickHours: Double = 4.88,
+    val vacationHours: Double = 40.00
 )
 
 data class FeedbackItem(

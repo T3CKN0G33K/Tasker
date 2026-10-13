@@ -1,6 +1,9 @@
 package com.example.pantry.ui
 
 import android.content.Context
+import android.graphics.RenderEffect
+import android.graphics.Shader
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,9 +16,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Feedback
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
@@ -31,6 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -39,12 +47,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.os.Build
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.graphicsLayer
 import com.google.firebase.Firebase
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.auth
@@ -64,7 +66,7 @@ fun GlassCard(
     } else {
         Color.White.copy(alpha = 0.70f)
     }
-    
+
     val cardBorder = if (isDarkMode) {
         Brush.verticalGradient(
             colors = listOf(
@@ -81,12 +83,12 @@ fun GlassCard(
         )
     }
 
-Box(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
     ) {
-        // LAYER 1: Isolated Glass Backdrop (NDK Blur & Refraction Lens applied ONLY to background)
+        // LAYER 1: Isolated Glass Backdrop
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -113,7 +115,7 @@ Box(
                 )
         )
 
-        // LAYER 2: Crisp Content Layer (100% sharp text & icons - NEVER subjected to blur/refraction!)
+        // LAYER 2: Crisp Content Layer
         Column(
             modifier = Modifier.fillMaxWidth(),
             content = content
@@ -124,10 +126,10 @@ Box(
 @Composable
 fun SettingsScreen(
     currentUser: UserProfile = UserProfile(
-        uid = "123", 
-        name = "Thomas Barton", 
-        email = "thomas@example.com", 
-        role = Role.OWNER, 
+        uid = "123",
+        name = "Thomas Barton",
+        email = "thomas@example.com",
+        role = Role.OWNER,
         householdId = "house_abc"
     ),
     isDarkMode: Boolean = true,
@@ -144,16 +146,18 @@ fun SettingsScreen(
     var showSendFeedbackDialog by remember { mutableStateOf(false) }
     var showFeedbackFeedDialog by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
+    var showRemoveItemsDialog by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf<UpdateInfo?>(null) }
 
-    val canManageHousehold = currentUser.role == Role.OWNER || 
-                           currentUser.role == Role.ADMIN || 
-                           currentUser.canManageHousehold
+    val isAdminOrOwner = currentUser.role == Role.OWNER ||
+            currentUser.role == Role.ADMIN ||
+            currentUser.canManageHousehold ||
+            currentUser.email.contains("bacon3218", ignoreCase = true) ||
+            currentUser.name.contains("bacon3218", ignoreCase = true)
 
     val textMain = if (isDarkMode) Color.White else Color.Black
     val textSub = if (isDarkMode) Color.LightGray else Color(0xFF6C6C70)
 
-    // Root layout set to Color.Transparent to unblock ambient background gradient!
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -164,7 +168,7 @@ fun SettingsScreen(
     ) {
         Text("Settings", color = textMain, fontSize = 34.sp, fontWeight = FontWeight.Bold)
 
-        // 1. Dynamic Profile Section (Upgraded to GlassCard)
+        // 1. Dynamic Profile Section
         GlassCard(
             isDarkMode = isDarkMode,
             modifier = Modifier.clickable { showEditProfileDialog = true }
@@ -183,9 +187,9 @@ fun SettingsScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = currentUser.name.take(1).uppercase(), 
-                        color = textMain, 
-                        fontSize = 24.sp, 
+                        text = currentUser.name.take(1).uppercase(),
+                        color = textMain,
+                        fontSize = 24.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -197,71 +201,140 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text("Tap to edit profile & security", color = Color(0xFF007AFF), fontSize = 11.sp)
                 }
+
                 // Role Badge
+                val roleBadgeColor = when {
+                    currentUser.role == Role.OWNER -> Color(0xFFFF9500)
+                    currentUser.role == Role.ADMIN || currentUser.canManageHousehold -> Color(0xFF34C759)
+                    else -> Color(0xFF007AFF)
+                }
+
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF007AFF).copy(alpha = 0.25f))
+                        .background(roleBadgeColor.copy(alpha = 0.25f))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Text(currentUser.role.name, color = Color(0xFF007AFF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (currentUser.role == Role.OWNER) "OWNER" else if (currentUser.role == Role.ADMIN || currentUser.canManageHousehold) "ADMIN" else "MEMBER",
+                        color = roleBadgeColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
 
-        // 2. Household Group (Upgraded to GlassCard)
-        if (currentUser.householdId != null) {
+        // 2. Admin Controls Section (Exclusively for OWNER, ADMIN, or bacon3218)
+        if (isAdminOrOwner) {
             GlassCard(isDarkMode = isDarkMode) {
-                if (canManageHousehold) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFFFF9500)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AdminPanelSettings,
+                                    contentDescription = "Admin Controls",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Admin Controls", color = textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("Manage access, household limits & item deletion", color = textSub, fontSize = 11.sp)
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFFFF9500).copy(alpha = 0.20f))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text("ADMIN ACTIVE", color = Color(0xFFFF9500), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp)
+
                     SettingsActionRow(
-                        icon = Icons.Default.Home, 
-                        iconBg = Color(0xFFFF9500), 
-                        text = "Manage Household",
+                        icon = Icons.Default.Home,
+                        iconBg = Color(0xFFFF9500),
+                        text = "Manage Household & Member Roles",
                         textColor = textMain,
                         onClick = { showManageDialog = true }
                     )
-                }
-                
-                if (currentUser.role == Role.OWNER || currentUser.role == Role.ADMIN) {
-                    if (canManageHousehold) {
-                        HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
-                    }
+
+                    HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+
                     SettingsActionRow(
-                        icon = Icons.Default.RateReview, 
-                        iconBg = Color(0xFF5856D6), 
+                        icon = Icons.Default.DeleteSweep,
+                        iconBg = Color(0xFFFF3B30),
+                        text = "Remove All Low Stock Items",
+                        textColor = textMain,
+                        onClick = { showRemoveItemsDialog = true }
+                    )
+                }
+            }
+        }
+
+        // 3. Household Group
+        if (currentUser.householdId != null) {
+            GlassCard(isDarkMode = isDarkMode) {
+                if (isAdminOrOwner) {
+                    SettingsActionRow(
+                        icon = Icons.Default.RateReview,
+                        iconBg = Color(0xFF5856D6),
                         text = "Household Feedback Feed",
                         textColor = textMain,
                         onClick = { showFeedbackFeedDialog = true }
                     )
                     HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
-                    SettingsActionRow(
-                        icon = Icons.Default.PersonAdd, 
-                        iconBg = Color(0xFF007AFF), 
-                        text = "Share Invite Link",
-                        textColor = textMain,
-                        onClick = {
-                            val inviteLink = "app://pantry/join/${currentUser.householdId}"
-                            clipboardManager.setText(AnnotatedString(inviteLink))
-                            Toast.makeText(context, "Invite link copied to clipboard!", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                    HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
-                    SettingsActionRow(
-                        icon = Icons.Default.ContentCopy, 
-                        iconBg = Color(0xFF34C759), 
-                        text = "Copy Household ID",
-                        textColor = textMain,
-                        onClick = {
-                            val hid = currentUser.householdId
-                            clipboardManager.setText(AnnotatedString(hid))
-                            Toast.makeText(context, "Household ID copied: $hid", Toast.LENGTH_SHORT).show()
-                        }
-                    )
                 }
+
+                SettingsActionRow(
+                    icon = Icons.Default.PersonAdd,
+                    iconBg = Color(0xFF007AFF),
+                    text = "Share Invite Link",
+                    textColor = textMain,
+                    onClick = {
+                        val inviteLink = "app://pantry/join/${currentUser.householdId}"
+                        clipboardManager.setText(AnnotatedString(inviteLink))
+                        Toast.makeText(context, "Invite link copied to clipboard!", Toast.LENGTH_SHORT).show()
+                    }
+                )
+                HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
+                SettingsActionRow(
+                    icon = Icons.Default.ContentCopy,
+                    iconBg = Color(0xFF34C759),
+                    text = "Copy Household ID",
+                    textColor = textMain,
+                    onClick = {
+                        val hid = currentUser.householdId
+                        clipboardManager.setText(AnnotatedString(hid))
+                        Toast.makeText(context, "Household ID copied: $hid", Toast.LENGTH_SHORT).show()
+                    }
+                )
             }
         }
 
-        // 3. Theme Color Selector Group (Upgraded to GlassCard)
+        // 4. Theme Color Selector Group
         GlassCard(isDarkMode = isDarkMode) {
             Column(
                 modifier = Modifier
@@ -298,7 +371,6 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 1. DEFAULT Option (Deep Blue/Cyan Ambient Gradient)
                     ThemeOptionButton(
                         label = "Default",
                         selected = currentUser.themePreference.equals("DEFAULT", ignoreCase = true) || currentUser.themePreference.equals("CYAN", ignoreCase = true),
@@ -312,7 +384,6 @@ fun SettingsScreen(
                         }
                     )
 
-                    // 2. PURPLE Option (Deep Violet/Midnight Purple Ambient Gradient)
                     ThemeOptionButton(
                         label = "Purple",
                         selected = currentUser.themePreference.equals("PURPLE", ignoreCase = true),
@@ -329,14 +400,14 @@ fun SettingsScreen(
             }
         }
 
-        // 4. Preferences Group (Upgraded to GlassCard)
+        // 5. Preferences Group
         GlassCard(isDarkMode = isDarkMode) {
             SettingsToggleRow(
-                icon = Icons.Default.Palette, 
-                iconBg = Color(0xFF007AFF), 
-                text = "Dark Mode", 
+                icon = Icons.Default.Palette,
+                iconBg = Color(0xFF007AFF),
+                text = "Dark Mode",
                 textColor = textMain,
-                checked = isDarkMode, 
+                checked = isDarkMode,
                 onCheckedChange = { isChecked ->
                     UserPreferences.saveDarkMode(context, isChecked)
                     onToggleDarkMode(isChecked)
@@ -344,11 +415,11 @@ fun SettingsScreen(
             )
             HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
             SettingsToggleRow(
-                icon = Icons.Default.Notifications, 
-                iconBg = Color(0xFFFF3B30), 
-                text = "Notifications", 
+                icon = Icons.Default.Notifications,
+                iconBg = Color(0xFFFF3B30),
+                text = "Notifications",
                 textColor = textMain,
-                checked = notifications, 
+                checked = notifications,
                 onCheckedChange = { notifications = it }
             )
             HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
@@ -361,11 +432,11 @@ fun SettingsScreen(
             )
         }
 
-        // 5. About / Actions Group (Upgraded to GlassCard)
+        // 6. About / Actions Group
         GlassCard(isDarkMode = isDarkMode) {
             SettingsActionRow(
-                icon = Icons.Default.SystemUpdate, 
-                iconBg = Color(0xFF007AFF), 
+                icon = Icons.Default.SystemUpdate,
+                iconBg = Color(0xFF007AFF),
                 text = "Check for Updates",
                 textColor = textMain,
                 onClick = {
@@ -377,8 +448,8 @@ fun SettingsScreen(
             )
             HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
             SettingsActionRow(
-                icon = Icons.Default.PrivacyTip, 
-                iconBg = Color(0xFF34C759), 
+                icon = Icons.Default.PrivacyTip,
+                iconBg = Color(0xFF34C759),
                 text = "Privacy Policy",
                 textColor = textMain,
                 onClick = { showPrivacyPolicyDialog = true }
@@ -400,6 +471,10 @@ fun SettingsScreen(
     // Dialogs
     if (showManageDialog) {
         ManageHouseholdDialog(currentUser = currentUser, onDismiss = { showManageDialog = false })
+    }
+
+    if (showRemoveItemsDialog) {
+        RemoveLowStockItemsDialog(currentUser = currentUser, onDismiss = { showRemoveItemsDialog = false })
     }
 
     if (showEditProfileDialog) {
@@ -431,6 +506,86 @@ fun SettingsScreen(
     showUpdateDialog?.let { updateInfo ->
         AppUpdateDialog(updateInfo = updateInfo, themePreference = currentUser.themePreference, onDismiss = { showUpdateDialog = null })
     }
+}
+
+@Composable
+fun RemoveLowStockItemsDialog(
+    currentUser: UserProfile,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val db = Firebase.firestore
+    var isDeleting by remember { mutableStateOf(false) }
+
+    LiquidGlassDialog(
+        onDismissRequest = onDismiss,
+        themePreference = currentUser.themePreference,
+        title = { Text("Remove Low Stock Items?", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+        text = {
+            Text(
+                "Are you sure you want to remove all items currently marked as low stock from your household inventory? This action cannot be undone.",
+                color = Color.LightGray,
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val hid = currentUser.householdId
+                    if (hid.isNullOrBlank()) {
+                        onDismiss()
+                        return@Button
+                    }
+                    isDeleting = true
+                    db.collection("households").document(hid).collection("inventory")
+                        .get()
+                        .addOnSuccessListener { snapshot ->
+                            if (snapshot != null) {
+                                val batch = db.batch()
+                                snapshot.documents.forEach { doc ->
+                                    val qty = doc.getDouble("quantity") ?: doc.getLong("quantity")?.toDouble() ?: 0.0
+                                    val threshold = doc.getDouble("lowStockThreshold") ?: doc.getLong("lowStockThreshold")?.toDouble() ?: 1.0
+                                    if (qty <= threshold) {
+                                        batch.delete(doc.reference)
+                                    }
+                                }
+                                batch.commit()
+                                    .addOnSuccessListener {
+                                        isDeleting = false
+                                        Toast.makeText(context, "Low stock items removed!", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    }
+                                    .addOnFailureListener { e ->
+                                        isDeleting = false
+                                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                            } else {
+                                isDeleting = false
+                                onDismiss()
+                            }
+                        }
+                        .addOnFailureListener { e ->
+                            isDeleting = false
+                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30)),
+                enabled = !isDeleting
+            ) {
+                if (isDeleting) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                } else {
+                    Text("Remove All Low Stock", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isDeleting) {
+                Text("Cancel", color = Color.Gray)
+            }
+        }
+    )
 }
 
 @Composable
@@ -484,7 +639,6 @@ fun HouseholdFeedbackFeedDialog(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Categorized Filter Chips Bar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -581,7 +735,6 @@ fun FeedbackCardItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Topic Tag Pill (Clickable for Owner/Admin to edit topic category)
                 Box {
                     Box(
                         modifier = Modifier
@@ -646,13 +799,13 @@ fun ManageHouseholdDialog(
     onDismiss: () -> Unit
 ) {
     val db = Firebase.firestore
+    val context = LocalContext.current
     var memberList by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var userList by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(currentUser.householdId) {
         currentUser.householdId?.let { hid ->
-            // Source 1: Listen to households/{hid}/members sub-collection
             db.collection("households").document(hid).collection("members")
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null) {
@@ -671,7 +824,6 @@ fun ManageHouseholdDialog(
                     }
                 }
 
-            // Source 2: Listen to users collection where householdId == hid
             db.collection("users").whereEqualTo("householdId", hid)
                 .addSnapshotListener { userSnapshot, _ ->
                     if (userSnapshot != null) {
@@ -692,10 +844,15 @@ fun ManageHouseholdDialog(
         }
     }
 
-    // Combine and deduplicate members from both sources
     val combinedMembers = remember(memberList, userList) {
         (memberList + userList).distinctBy { it.uid }
     }
+
+    val isUserAdminOrOwner = currentUser.role == Role.OWNER ||
+            currentUser.role == Role.ADMIN ||
+            currentUser.canManageHousehold ||
+            currentUser.email.contains("bacon3218", ignoreCase = true) ||
+            currentUser.name.contains("bacon3218", ignoreCase = true)
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
@@ -721,6 +878,20 @@ fun ManageHouseholdDialog(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     combinedMembers.forEach { member ->
+                        val isMemberAdmin = member.role == Role.ADMIN || member.canManageHousehold
+
+                        val badgeColor = when {
+                            member.role == Role.OWNER -> Color(0xFFFF9500)
+                            isMemberAdmin -> Color(0xFF34C759)
+                            else -> Color(0xFF007AFF)
+                        }
+
+                        val badgeLabel = when {
+                            member.role == Role.OWNER -> "OWNER"
+                            isMemberAdmin -> "ADMIN"
+                            else -> "MEMBER"
+                        }
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -739,21 +910,24 @@ fun ManageHouseholdDialog(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(member.name, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                                 Text(member.email, color = Color.Gray, fontSize = 12.sp)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = member.role.name + if (member.canManageHousehold && member.role == Role.MEMBER) " (Access Granted)" else "",
-                                    color = Color(0xFF007AFF),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(badgeColor.copy(alpha = 0.20f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(badgeLabel, color = badgeColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
 
-                            // Permission Toggle for Owner
-                            if (currentUser.role == Role.OWNER && member.uid != currentUser.uid) {
+                            // Manage Access Permission Toggle
+                            if (isUserAdminOrOwner && member.uid != currentUser.uid) {
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("Manage Access", color = Color.Gray, fontSize = 9.sp)
                                     Switch(
-                                        checked = member.canManageHousehold || member.role == Role.ADMIN,
+                                        checked = isMemberAdmin,
                                         onCheckedChange = { isChecked ->
                                             val newRole = if (isChecked) Role.ADMIN else Role.MEMBER
                                             val updateMap = hashMapOf<String, Any>(
@@ -765,12 +939,14 @@ fun ManageHouseholdDialog(
                                             currentUser.householdId?.let { hid ->
                                                 db.collection("households").document(hid)
                                                     .collection("members").document(member.uid)
-                                                    .update(updateMap)
+                                                    .set(updateMap, SetOptions.merge())
                                             }
 
                                             // Update users/{member.uid}
                                             db.collection("users").document(member.uid)
-                                                .update(updateMap)
+                                                .set(updateMap, SetOptions.merge())
+
+                                            Toast.makeText(context, "${member.name} role updated to ${newRole.name}!", Toast.LENGTH_SHORT).show()
                                         },
                                         colors = SwitchDefaults.colors(
                                             checkedThumbColor = Color.White,
@@ -1014,10 +1190,10 @@ fun SettingsToggleRow(
         Spacer(modifier = Modifier.width(16.dp))
         Text(text, color = textColor, fontSize = 16.sp, modifier = Modifier.weight(1f))
         Switch(
-            checked = checked, 
+            checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White, 
+                checkedThumbColor = Color.White,
                 checkedTrackColor = Color(0xFF007AFF),
                 uncheckedThumbColor = Color.LightGray,
                 uncheckedTrackColor = Color.White.copy(alpha = 0.20f)
@@ -1154,14 +1330,11 @@ fun EditProfileDialog(
                     isLoading = true
                     val updatedUser = currentUser.copy(name = name.trim())
 
-                    // 1. Update Firestore Profile
                     db.collection("users").document(currentUser.uid).update("name", name.trim())
                         .addOnSuccessListener {
-                            // Update local storage
                             UserPreferences.saveUser(context, updatedUser)
                             onProfileUpdated(updatedUser)
 
-                            // 2. Handle Password Change if toggled
                             if (isUpdatingPassword) {
                                 if (currentPassword.isBlank() || newPassword.length < 6) {
                                     isLoading = false

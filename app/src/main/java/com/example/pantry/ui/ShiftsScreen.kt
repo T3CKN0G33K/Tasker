@@ -195,7 +195,8 @@ val defaultOfficialTimecards = listOf(
 fun ShiftsScreen(
     currentUser: UserProfile = UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
     isDarkMode: Boolean = true,
-    themePreference: String = "DEFAULT"
+    themePreference: String = "DEFAULT",
+    onProfileUpdated: (UserProfile) -> Unit = {}
 ) {
     val isPreview = LocalInspectionMode.current
     val context = LocalContext.current
@@ -212,6 +213,7 @@ fun ShiftsScreen(
     var editingPunch by remember { mutableStateOf<PersonalPunchRecord?>(null) }
     var editingOfficialTimecard by remember { mutableStateOf<OfficialTimecardRecord?>(null) }
     var showHistoryDialog by remember { mutableStateOf(false) }
+    var showEditPtoDialog by remember { mutableStateOf(false) }
 
     val activeAccentColor = if (themePreference.equals("PURPLE", ignoreCase = true)) {
         Color(0xFFC084FC)
@@ -219,7 +221,8 @@ fun ShiftsScreen(
         Color(0xFF007AFF)
     }
 
-    val activePeriodRange = "Sep 21 – Oct 04, 2026"
+    val currentPayCycle = remember { PayCycleUtils.getCurrentPayCycle() }
+    val activePeriodRange = currentPayCycle.displayRange
 
     val textMain = if (isDarkMode) Color.White else Color.Black
     val textSub = if (isDarkMode) Color.LightGray else Color(0xFF6C6C70)
@@ -507,7 +510,9 @@ fun ShiftsScreen(
                 ) {
                     GlassCard(
                         isDarkMode = isDarkMode,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { showEditPtoDialog = true }
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
@@ -525,14 +530,16 @@ fun ShiftsScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text("Sick Balance", color = textSub, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("04:53 hrs", color = textMain, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Text(String.format(Locale.US, "%.2f hrs", currentUser.sickHours), color = textMain, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
 
                     GlassCard(
                         isDarkMode = isDarkMode,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { showEditPtoDialog = true }
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
@@ -550,7 +557,7 @@ fun ShiftsScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text("Vacation", color = textSub, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("40:00 hrs", color = textMain, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Text(String.format(Locale.US, "%.2f hrs", currentUser.vacationHours), color = textMain, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1025,6 +1032,16 @@ fun ShiftsScreen(
             archivedPeriods = archivedPeriods,
             themePreference = currentUser.themePreference,
             onDismiss = { showHistoryDialog = false }
+        )
+    }
+
+    // Editable PTO Hours Dialog
+    if (showEditPtoDialog) {
+        EditPtoHoursDialog(
+            currentUser = currentUser,
+            themePreference = currentUser.themePreference,
+            onDismiss = { showEditPtoDialog = false },
+            onProfileUpdated = onProfileUpdated
         )
     }
 }
@@ -2308,8 +2325,9 @@ fun EnterOfficialTimecardDialog(
         Color(0xFF007AFF)
     }
 
-    var periodStart by remember { mutableStateOf(editingRecord?.periodStart ?: "2026-09-21") }
-    var periodEnd by remember { mutableStateOf(editingRecord?.periodEnd ?: "2026-10-04") }
+    val currentPayCycle = remember { PayCycleUtils.getCurrentPayCycle() }
+    var periodStart by remember { mutableStateOf(editingRecord?.periodStart ?: currentPayCycle.startDateStr) }
+    var periodEnd by remember { mutableStateOf(editingRecord?.periodEnd ?: currentPayCycle.endDateStr) }
     var regHoursText by remember { mutableStateOf(editingRecord?.officialRegularHours?.toString() ?: "80.0") }
     var otHoursText by remember { mutableStateOf(editingRecord?.officialOvertimeHours?.toString() ?: "0.4") }
     var paidHoursText by remember { mutableStateOf(editingRecord?.officialPaidHours?.toString() ?: "80.4") }
@@ -2931,5 +2949,162 @@ fun ShiftsScreenPreview() {
             currentUser = UserProfile("preview_user", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_preview"),
             isDarkMode = true
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DIALOG 6: Edit Sick & Vacation PTO Balances Dialog
+// ---------------------------------------------------------------------------
+
+@Composable
+fun EditPtoHoursDialog(
+    currentUser: UserProfile,
+    themePreference: String = "DEFAULT",
+    onDismiss: () -> Unit,
+    onProfileUpdated: (UserProfile) -> Unit
+) {
+    val context = LocalContext.current
+    val db = Firebase.firestore
+
+    var sickText by remember { mutableStateOf(String.format(Locale.US, "%.2f", currentUser.sickHours)) }
+    var vacationText by remember { mutableStateOf(String.format(Locale.US, "%.2f", currentUser.vacationHours)) }
+    var isSaving by remember { mutableStateOf(false) }
+
+    val activeAccentColor = if (themePreference.equals("PURPLE", ignoreCase = true)) {
+        Color(0xFFC084FC)
+    } else {
+        Color(0xFF007AFF)
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .wrapContentHeight()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xFF161B22).copy(alpha = 0.96f))
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.35f),
+                                Color.White.copy(alpha = 0.08f)
+                            )
+                        ),
+                        shape = RoundedCornerShape(24.dp)
+                    )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Edit PTO Balances",
+                            color = Color.White,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.70f), modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    val inputColors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White.copy(alpha = 0.10f),
+                        unfocusedContainerColor = Color.White.copy(alpha = 0.10f),
+                        focusedBorderColor = activeAccentColor,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.20f),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+
+                    OutlinedTextField(
+                        value = sickText,
+                        onValueChange = { sickText = it },
+                        label = { Text("Sick Hours", color = Color.White.copy(alpha = 0.70f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        colors = inputColors
+                    )
+
+                    OutlinedTextField(
+                        value = vacationText,
+                        onValueChange = { vacationText = it },
+                        label = { Text("Vacation Hours", color = Color.White.copy(alpha = 0.70f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        colors = inputColors
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    GlassHeroButton(
+                        onClick = {
+                            val sickVal = sickText.toDoubleOrNull()
+                            val vacVal = vacationText.toDoubleOrNull()
+
+                            if (sickVal == null || vacVal == null || sickVal < 0 || vacVal < 0 || isSaving) return@GlassHeroButton
+                            isSaving = true
+
+                            val updatedUser = currentUser.copy(
+                                sickHours = sickVal,
+                                vacationHours = vacVal
+                            )
+
+                            UserPreferences.saveUser(context, updatedUser)
+                            onProfileUpdated(updatedUser)
+
+                            val updateMap = hashMapOf<String, Any>(
+                                "sickHours" to sickVal,
+                                "vacationHours" to vacVal
+                            )
+
+                            currentUser.householdId?.let { hid ->
+                                db.collection("households").document(hid)
+                                    .collection("members").document(currentUser.uid)
+                                    .set(updateMap, SetOptions.merge())
+                            }
+
+                            db.collection("users").document(currentUser.uid)
+                                .set(updateMap, SetOptions.merge())
+                                .addOnSuccessListener {
+                                    isSaving = false
+                                    Toast.makeText(context, "PTO hours updated!", Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                }
+                                .addOnFailureListener { e ->
+                                    isSaving = false
+                                    Toast.makeText(context, "Saved locally! Firestore sync error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        Text("Save PTO Balances", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }

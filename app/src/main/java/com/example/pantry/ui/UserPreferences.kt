@@ -24,6 +24,7 @@ object UserPreferences {
     private const val KEY_CAN_MANAGE = "can_manage_household"
     private const val KEY_DARK_MODE = "dark_mode"
     private const val KEY_THEME_PREFERENCE = "theme_preference"
+    private const val KEY_HAS_SEEDED_BANK_LEDGER = "has_seeded_bank_ledger"
 
     private const val KEY_GLASS_ALPHA = "glass_alpha"
     private const val KEY_GLASS_BLUR = "glass_blur"
@@ -71,6 +72,14 @@ object UserPreferences {
 
     fun isDarkMode(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_DARK_MODE, true)
+    }
+
+    fun hasSeededBankLedger(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_HAS_SEEDED_BANK_LEDGER, false)
+    }
+
+    fun setBankLedgerSeeded(context: Context, seeded: Boolean = true) {
+        getPrefs(context).edit().putBoolean(KEY_HAS_SEEDED_BANK_LEDGER, seeded).apply()
     }
 
     fun saveGlassSettings(context: Context, settings: TaskbarGlassSettings) {

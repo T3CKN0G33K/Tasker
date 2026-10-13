@@ -2,80 +2,43 @@ package com.example.pantry.ui
 
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.material.icons.filled.CalendarMonth
-import com.example.liquidglass.GlassMaterial
 import com.example.liquidglass.LiquidGlassTabBarCompose
 import com.example.liquidglass.LiquidGlassTabItem
-import com.example.liquidglass.LiquidGlassView
 import com.example.pantry.notifications.NotificationHelper
 import com.google.firebase.Firebase
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
 
-@Composable
-fun LiquidGlassTabBarComponent(
-    selectedTab: Int,
-    onTabSelected: (Int) -> Unit,
-    isDarkMode: Boolean,
-    themePreference: String = "DEFAULT",
-    modifier: Modifier = Modifier
-) {
-    val tabs = listOf(
-        LiquidGlassTabItem(0, "Pantry", Icons.AutoMirrored.Filled.List),
-        LiquidGlassTabItem(1, "Calendar", Icons.Default.CalendarMonth),
-        LiquidGlassTabItem(2, "Budget", Icons.Default.AccountBalanceWallet),
-        LiquidGlassTabItem(3, "Shifts", Icons.Default.Schedule),
-        LiquidGlassTabItem(4, "Settings", Icons.Default.Settings)
-    )
-
-    LiquidGlassTabBarCompose(
-        tabs = tabs,
-        selectedTab = selectedTab,
-        onTabSelected = onTabSelected,
-        isDarkMode = isDarkMode,
-        themePreference = themePreference,
-        modifier = modifier
-    )
-}
+val dashboardTabItems = listOf(
+    LiquidGlassTabItem(0, "Pantry", Icons.Default.List),
+    LiquidGlassTabItem(1, "Calendar", Icons.Default.CalendarToday),
+    LiquidGlassTabItem(2, "Budget", Icons.Default.AccountBalance),
+    LiquidGlassTabItem(3, "Shifts", Icons.Default.Schedule),
+    LiquidGlassTabItem(4, "Settings", Icons.Default.Settings)
+)
 
 @Composable
 fun DashboardScreen(
-    modifier: Modifier = Modifier,
-    currentUser: UserProfile = UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
+    currentUser: UserProfile,
     isDarkMode: Boolean = true,
     onToggleDarkMode: (Boolean) -> Unit = {},
     onProfileUpdated: (UserProfile) -> Unit = {},
@@ -84,15 +47,13 @@ fun DashboardScreen(
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var pantryItems by remember { mutableStateOf<List<PantryItem>>(emptyList()) }
-    var budgetTransactions by remember { mutableStateOf<List<BudgetTransaction>>(emptyList()) }
+    var ledgerEntries by remember { mutableStateOf<List<LedgerEntry>>(emptyList()) }
     var monthlyBills by remember { mutableStateOf<List<BillItem>>(emptyList()) }
-    var monthlyBudgetLimit by remember { mutableDoubleStateOf(1804.66) }
 
     val db = Firebase.firestore
-
     val previousStockState = remember { mutableMapOf<String, Double>() }
 
-    // Real-time Firestore Sync at Dashboard level (Persists across tab switches)
+    // Real-time Firestore Sync at Dashboard level
     LaunchedEffect(currentUser.householdId) {
         currentUser.householdId?.let { householdId ->
             // 1. Pantry Inventory Sync
@@ -138,45 +99,85 @@ fun DashboardScreen(
                     }
                 }
 
-            // 2. Budget Limit Sync
-            db.collection("households").document(householdId)
-                .addSnapshotListener { doc, _ ->
-                    if (doc != null && doc.exists()) {
-                        monthlyBudgetLimit = doc.getDouble("budgetLimit") ?: 1804.66
-                    }
-                }
-
-            // 3. Monthly Bills Sync
+            // 2. Bi-Weekly Bills Sync (Guarded by persistent hasSeededBankLedger flag)
             db.collection("households").document(householdId).collection("bills")
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null) {
-                        val items = snapshot.documents.mapNotNull { doc ->
-                            BillItem(
-                                id = doc.id,
-                                name = doc.getString("name") ?: "Bill",
-                                amount = doc.getDouble("amount") ?: 0.0,
-                                dueDate = doc.getString("dueDate") ?: "Due 1st",
-                                isPaid = doc.getBoolean("isPaid") ?: false
-                            )
+                        if (snapshot.isEmpty && !UserPreferences.hasSeededBankLedger(context)) {
+                            UserPreferences.setBankLedgerSeeded(context, true)
+                            val batch = db.batch()
+                            defaultBillsList.forEach { bill ->
+                                val docRef = db.collection("households").document(householdId)
+                                    .collection("bills").document(bill.id)
+                                batch.set(
+                                    docRef,
+                                    hashMapOf(
+                                        "id" to bill.id,
+                                        "name" to bill.name,
+                                        "amount" to bill.amount,
+                                        "dueDate" to bill.dueDate,
+                                        "paidPeriodIds" to bill.paidPeriodIds
+                                    ),
+                                    SetOptions.merge()
+                                )
+                            }
+                            batch.commit()
+                        } else {
+                            val items = snapshot.documents.mapNotNull { doc ->
+                                @Suppress("UNCHECKED_CAST")
+                                val paidIds = (doc.get("paidPeriodIds") as? List<String>) ?: emptyList()
+                                BillItem(
+                                    id = doc.id,
+                                    name = doc.getString("name") ?: "Bill",
+                                    amount = doc.getDouble("amount") ?: 0.0,
+                                    dueDate = doc.getString("dueDate") ?: "Due 1st",
+                                    paidPeriodIds = paidIds
+                                )
+                            }
+                            monthlyBills = items
                         }
-                        monthlyBills = items
                     }
                 }
 
-            // 4. Budget Transactions Sync
+            // 3. Bank Ledger Transactions Sync (Guarded by persistent hasSeededBankLedger flag)
             db.collection("households").document(householdId).collection("transactions")
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null) {
-                        val items = snapshot.documents.mapNotNull { doc ->
-                            BudgetTransaction(
-                                id = doc.id,
-                                title = doc.getString("title") ?: "Expense",
-                                amount = doc.getDouble("amount") ?: 0.0,
-                                date = doc.getString("date") ?: "Today",
-                                account = doc.getString("account") ?: "Manual Entry"
-                            )
+                        if (snapshot.isEmpty && !UserPreferences.hasSeededBankLedger(context)) {
+                            UserPreferences.setBankLedgerSeeded(context, true)
+                            val batch = db.batch()
+                            defaultLedgerEntries.forEach { tx ->
+                                val docRef = db.collection("households").document(householdId)
+                                    .collection("transactions").document(tx.id)
+                                batch.set(
+                                    docRef,
+                                    hashMapOf(
+                                        "id" to tx.id,
+                                        "title" to tx.title,
+                                        "amount" to tx.amount,
+                                        "type" to tx.type.name,
+                                        "timestamp" to tx.timestamp,
+                                        "category" to tx.category
+                                    ),
+                                    SetOptions.merge()
+                                )
+                            }
+                            batch.commit()
+                        } else {
+                            val items = snapshot.documents.mapNotNull { doc ->
+                                val typeStr = doc.getString("type") ?: "EXPENSE"
+                                val type = try { TransactionType.valueOf(typeStr) } catch (_: Exception) { TransactionType.EXPENSE }
+                                LedgerEntry(
+                                    id = doc.id,
+                                    title = doc.getString("title") ?: "Transaction",
+                                    amount = doc.getDouble("amount") ?: 0.0,
+                                    type = type,
+                                    timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
+                                    category = doc.getString("category") ?: "General"
+                                )
+                            }
+                            ledgerEntries = items
                         }
-                        budgetTransactions = items
                     }
                 }
         }
@@ -205,17 +206,15 @@ fun DashboardScreen(
         else -> if (isDarkMode) Modifier.background(ambientMeshGradient) else Modifier.background(Color(0xFFF2F2F7))
     }
 
-    // 1. Root Container (Single Fullscreen Box for Floating Overlay)
     Box(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .then(bgModifier)
     ) {
-        // LAYER 1: Fullscreen Screen Content (Extends all the way behind floating liquid glass taskbar)
         AnimatedContent(
             targetState = selectedTab,
             transitionSpec = {
-                fadeIn(animationSpec = tween(180)) togetherWith 
+                fadeIn(animationSpec = tween(180)) togetherWith
                 fadeOut(animationSpec = tween(180))
             },
             label = "ScreenTransition"
@@ -281,14 +280,16 @@ fun DashboardScreen(
                         2 -> BudgetScreen(
                             currentUser = currentUser,
                             isDarkMode = isDarkMode,
-                            transactions = budgetTransactions,
+                            ledgerEntries = ledgerEntries,
                             bills = monthlyBills,
-                            monthlyLimit = monthlyBudgetLimit,
-                            onUpdateTransactions = { updatedTx -> budgetTransactions = updatedTx },
-                            onUpdateBills = { updatedBills -> monthlyBills = updatedBills },
-                            onUpdateMonthlyLimit = { updatedLimit -> monthlyBudgetLimit = updatedLimit }
+                            onUpdateLedger = { updated -> ledgerEntries = updated },
+                            onUpdateBills = { updated -> monthlyBills = updated }
                         )
-                        3 -> ShiftsScreen(currentUser = currentUser, isDarkMode = isDarkMode)
+                        3 -> ShiftsScreen(
+                            currentUser = currentUser,
+                            isDarkMode = isDarkMode,
+                            onProfileUpdated = onProfileUpdated
+                        )
                         4 -> SettingsScreen(
                             currentUser = currentUser,
                             isDarkMode = isDarkMode,
@@ -301,14 +302,14 @@ fun DashboardScreen(
             }
         }
 
-        // LAYER 2: Floating Rebuilt LiquidGlassTabBar Component (Droplet Glass Lens Slider)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding(),
             contentAlignment = Alignment.BottomCenter
         ) {
-            LiquidGlassTabBarComponent(
+            LiquidGlassTabBarCompose(
+                tabs = dashboardTabItems,
                 selectedTab = selectedTab,
                 onTabSelected = { newIndex -> selectedTab = newIndex },
                 isDarkMode = isDarkMode,

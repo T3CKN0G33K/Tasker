@@ -51,6 +51,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 
 fun parseEventDateTimeToEpoch(dateStr: String, timeStr: String): Long {
@@ -687,7 +688,7 @@ fun AddEventCenteredDialog(
 
     val initialMillis = remember(initialDate) {
         runCatching {
-            val sdf = SimpleDateFormat("yyyy-MM-DD", Locale.US)
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             sdf.parse(initialDate)?.time
         }.getOrNull() ?: System.currentTimeMillis()
     }
@@ -696,9 +697,22 @@ fun AddEventCenteredDialog(
         initialSelectedDateMillis = initialMillis
     )
 
+    val parsedTime = remember(timeText) {
+        runCatching {
+            val clean = parsePunchTimeSafely(timeText)
+            val isPm = clean.contains("PM", ignoreCase = true)
+            val parts = clean.replace("AM", "").replace("PM", "").trim().split(":")
+            var h = parts[0].toInt()
+            val m = if (parts.size > 1) parts[1].toInt() else 0
+            if (isPm && h < 12) h += 12
+            if (!isPm && h == 12) h = 0
+            Pair(h, m)
+        }.getOrDefault(Pair(10, 0))
+    }
+
     val timePickerState = rememberTimePickerState(
-        initialHour = 10,
-        initialMinute = 0,
+        initialHour = parsedTime.first,
+        initialMinute = parsedTime.second,
         is24Hour = false
     )
 
@@ -900,7 +914,9 @@ fun AddEventCenteredDialog(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let { millis ->
-                        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                            timeZone = TimeZone.getTimeZone("UTC")
+                        }
                         dateText = formatter.format(Date(millis))
                     }
                     showDatePicker = false
