@@ -50,6 +50,11 @@ android {
         compose = true
         buildConfig = true
     }
+    packaging {
+        jniLibs {
+            pickFirsts.add("**/libnativegauss.so")
+        }
+    }
 }
 
 dependencies {
