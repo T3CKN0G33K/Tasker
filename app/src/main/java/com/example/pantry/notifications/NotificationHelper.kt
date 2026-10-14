@@ -11,12 +11,14 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.example.pantry.ui.UpdateInfo
 import com.example.tasker.MainActivity
 import com.example.tasker.R
 
 object NotificationHelper {
     const val LOW_STOCK_CHANNEL_ID = "low_stock_channel"
     const val CALENDAR_CHANNEL_ID = "calendar_reminders_channel"
+    const val SYSTEM_UPDATES_CHANNEL_ID = "system_updates_channel"
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -41,8 +43,18 @@ object NotificationHelper {
                 enableVibration(true)
             }
 
+            val updatesChannel = NotificationChannel(
+                SYSTEM_UPDATES_CHANNEL_ID,
+                "App Updates",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications when a new app update or GitHub release is available"
+                enableVibration(true)
+            }
+
             notificationManager.createNotificationChannel(lowStockChannel)
             notificationManager.createNotificationChannel(calendarChannel)
+            notificationManager.createNotificationChannel(updatesChannel)
         }
     }
 
@@ -134,6 +146,24 @@ object NotificationHelper {
             notificationId = notificationId,
             title = "Upcoming: $title",
             message = message,
+            intent = intent
+        )
+    }
+
+    fun showUpdateAvailableNotification(context: Context, updateInfo: UpdateInfo) {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("target_screen", "settings")
+        }
+
+        val notificationId = ("update_" + updateInfo.latestVersionName).hashCode()
+
+        postNotification(
+            context = context,
+            channelId = SYSTEM_UPDATES_CHANNEL_ID,
+            notificationId = notificationId,
+            title = "App Update Available: ${updateInfo.latestVersionName}",
+            message = "A new version of Tasker (${updateInfo.latestVersionName}) is available. Tap to install.",
             intent = intent
         )
     }

@@ -142,6 +142,7 @@ object AppUpdateManager {
         } catch (_: Exception) { "1.0" }
 
         checkGitHubForUpdates(currentVersionName) { updateInfo ->
+            com.example.pantry.notifications.NotificationHelper.showUpdateAvailableNotification(context, updateInfo)
             onUpdateAvailable(updateInfo)
         }
 
