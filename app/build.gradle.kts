@@ -16,8 +16,8 @@ android {
         applicationId = "com.example.tasker"
         minSdk = 26
         targetSdk = 36
-        versionCode = 28
-        versionName = "1.28"
+        versionCode = 30
+        versionName = "1.29"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -42,6 +42,10 @@ android {
             }
         }
     }
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -55,13 +59,10 @@ android {
             pickFirsts.add("**/libnativegauss.so")
         }
     }
-    lint {
-        checkReleaseBuilds = false
-        abortOnError = false
-    }
 }
 
 dependencies {
+    implementation("androidx.fragment:fragment-ktx:1.8.6")
     implementation("io.github.kyant0:shapes:1.0.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
