@@ -25,6 +25,8 @@ object UserPreferences {
     private const val KEY_DARK_MODE = "dark_mode"
     private const val KEY_THEME_PREFERENCE = "theme_preference"
     private const val KEY_HAS_SEEDED_BANK_LEDGER = "has_seeded_bank_ledger"
+    private const val KEY_NOTIFIED_UPDATE_VERSION = "notified_update_version"
+    private const val PREF_STOCK_NOTIFIED_PREFIX = "stock_notified_"
 
     private const val KEY_GLASS_ALPHA = "glass_alpha"
     private const val KEY_GLASS_BLUR = "glass_blur"
@@ -80,6 +82,25 @@ object UserPreferences {
 
     fun setBankLedgerSeeded(context: Context, seeded: Boolean = true) {
         getPrefs(context).edit().putBoolean(KEY_HAS_SEEDED_BANK_LEDGER, seeded).apply()
+    }
+
+    fun getLastNotifiedStock(context: Context, itemId: String): Double? {
+        val prefs = getPrefs(context)
+        val key = PREF_STOCK_NOTIFIED_PREFIX + itemId
+        return if (prefs.contains(key)) prefs.getFloat(key, Float.MAX_VALUE).toDouble() else null
+    }
+
+    fun saveLastNotifiedStock(context: Context, itemId: String, quantity: Double) {
+        val key = PREF_STOCK_NOTIFIED_PREFIX + itemId
+        getPrefs(context).edit().putFloat(key, quantity.toFloat()).apply()
+    }
+
+    fun getLastNotifiedUpdateVersion(context: Context): String? {
+        return getPrefs(context).getString(KEY_NOTIFIED_UPDATE_VERSION, null)
+    }
+
+    fun saveLastNotifiedUpdateVersion(context: Context, version: String) {
+        getPrefs(context).edit().putString(KEY_NOTIFIED_UPDATE_VERSION, version).apply()
     }
 
     fun saveGlassSettings(context: Context, settings: TaskbarGlassSettings) {

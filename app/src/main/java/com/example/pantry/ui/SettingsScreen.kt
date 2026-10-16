@@ -53,73 +53,72 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.DpOffset
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.catalog.components.LiquidToggle
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
+    backdrop: Backdrop? = null,
     isDarkMode: Boolean = true,
-    shape: Shape = RoundedCornerShape(20.dp),
+    shape: Shape = RoundedCornerShape(22.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val cardBg = if (isDarkMode) {
-        Color.White.copy(alpha = 0.12f)
-    } else {
-        Color.White.copy(alpha = 0.70f)
-    }
-
-    val cardBorder = if (isDarkMode) {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.45f),
-                Color.White.copy(alpha = 0.12f)
-            )
-        )
-    } else {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color.White,
-                Color.White.copy(alpha = 0.50f)
-            )
-        )
-    }
+    val currentBackdrop = backdrop ?: rememberLayerBackdrop()
+    val containerColor = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.45f)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(shape)
+            .drawBackdrop(
+                backdrop = currentBackdrop,
+                shape = { shape },
+                effects = {
+                    colorControls(
+                        brightness = if (isDarkMode) 0f else 0.15f,
+                        saturation = 1.3f
+                    )
+                    vibrancy()
+                    blur(12.dp.toPx())
+                    lens(
+                        refractionHeight = 20.dp.toPx(),
+                        refractionAmount = 36.dp.toPx(),
+                        chromaticAberration = true
+                    )
+                },
+                highlight = { Highlight(width = 1.2.dp, alpha = 0.45f) },
+                shadow = { Shadow(radius = 16.dp, alpha = 0.25f, offset = DpOffset(0.dp, 6.dp)) },
+                innerShadow = { InnerShadow(radius = 8.dp, alpha = 0.20f) },
+                onDrawSurface = { drawRect(containerColor) }
+            )
     ) {
-        // LAYER 1: Isolated Glass Backdrop
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .graphicsLayer {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        val androidBlur = RenderEffect.createBlurEffect(
-                            20f * density,
-                            20f * density,
-                            Shader.TileMode.CLAMP
-                        )
-                        renderEffect = androidBlur.asComposeRenderEffect()
-                    }
-                }
-                .refractionLens(
-                    refractionHeightPx = 16f,
-                    refractionAmountPx = -14f,
-                    chromaticAberration = 0f
+        CompositionLocalProvider(
+            LocalTextStyle provides TextStyle(
+                color = Color.White,
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = Color.Black.copy(alpha = 0.60f),
+                    offset = Offset(0f, 2f),
+                    blurRadius = 6f
                 )
-                .background(cardBg)
-                .border(
-                    width = 1.dp,
-                    brush = cardBorder,
-                    shape = shape
-                )
-        )
-
-        // LAYER 2: Crisp Content Layer
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            content = content
-        )
+            )
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                content = content
+            )
+        }
     }
 }
 
@@ -133,6 +132,7 @@ fun SettingsScreen(
         householdId = "house_abc"
     ),
     isDarkMode: Boolean = true,
+    backdrop: Backdrop? = null,
     onToggleDarkMode: (Boolean) -> Unit = {},
     onProfileUpdated: (UserProfile) -> Unit = {},
     onSignOut: () -> Unit = {}
@@ -170,6 +170,7 @@ fun SettingsScreen(
 
         // 1. Dynamic Profile Section
         GlassCard(
+            backdrop = backdrop,
             isDarkMode = isDarkMode,
             modifier = Modifier.clickable { showEditProfileDialog = true }
         ) {
@@ -182,8 +183,19 @@ fun SettingsScreen(
                 Box(
                     modifier = Modifier
                         .size(60.dp)
-                        .clip(CircleShape)
-                        .background(if (isDarkMode) Color.White.copy(alpha = 0.20f) else Color(0xFFE5E5EA)),
+                        .drawBackdrop(
+                            backdrop = backdrop ?: rememberLayerBackdrop(),
+                            shape = { CircleShape },
+                            effects = {
+                                vibrancy()
+                                blur(4.dp.toPx())
+                                lens(8.dp.toPx(), 12.dp.toPx())
+                            },
+                            highlight = { Highlight(width = 1.dp, alpha = 0.5f) },
+                            shadow = { Shadow(radius = 8.dp, alpha = 0.2f) },
+                            innerShadow = { InnerShadow(radius = 4.dp, alpha = 0.25f) },
+                            onDrawSurface = { drawRect(if (isDarkMode) Color.White.copy(alpha = 0.20f) else Color(0xFFE5E5EA)) }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -211,9 +223,14 @@ fun SettingsScreen(
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(roleBadgeColor.copy(alpha = 0.25f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .drawBackdrop(
+                            backdrop = backdrop ?: rememberLayerBackdrop(),
+                            shape = { RoundedCornerShape(percent = 50) },
+                            effects = { lens(6.dp.toPx(), 10.dp.toPx()) },
+                            highlight = { Highlight(width = 1.dp, alpha = 0.35f) },
+                            onDrawSurface = { drawRect(roleBadgeColor.copy(alpha = 0.25f)) }
+                        )
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
                 ) {
                     Text(
                         text = if (currentUser.role == Role.OWNER) "OWNER" else if (currentUser.role == Role.ADMIN || currentUser.canManageHousehold) "ADMIN" else "MEMBER",
@@ -227,7 +244,10 @@ fun SettingsScreen(
 
         // 2. Admin Controls Section (Exclusively for OWNER, ADMIN, or bacon3218)
         if (isAdminOrOwner) {
-            GlassCard(isDarkMode = isDarkMode) {
+            GlassCard(
+                backdrop = backdrop,
+                isDarkMode = isDarkMode
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -296,7 +316,10 @@ fun SettingsScreen(
 
         // 3. Household Group
         if (currentUser.householdId != null) {
-            GlassCard(isDarkMode = isDarkMode) {
+            GlassCard(
+                backdrop = backdrop,
+                isDarkMode = isDarkMode
+            ) {
                 if (isAdminOrOwner) {
                     SettingsActionRow(
                         icon = Icons.Default.RateReview,
@@ -335,7 +358,10 @@ fun SettingsScreen(
         }
 
         // 4. Theme Color Selector Group
-        GlassCard(isDarkMode = isDarkMode) {
+        GlassCard(
+            backdrop = backdrop,
+            isDarkMode = isDarkMode
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -401,13 +427,17 @@ fun SettingsScreen(
         }
 
         // 5. Preferences Group
-        GlassCard(isDarkMode = isDarkMode) {
+        GlassCard(
+            backdrop = backdrop,
+            isDarkMode = isDarkMode
+        ) {
             SettingsToggleRow(
                 icon = Icons.Default.Palette,
                 iconBg = Color(0xFF007AFF),
                 text = "Dark Mode",
                 textColor = textMain,
                 checked = isDarkMode,
+                backdrop = backdrop,
                 onCheckedChange = { isChecked ->
                     UserPreferences.saveDarkMode(context, isChecked)
                     onToggleDarkMode(isChecked)
@@ -420,6 +450,7 @@ fun SettingsScreen(
                 text = "Notifications",
                 textColor = textMain,
                 checked = notifications,
+                backdrop = backdrop,
                 onCheckedChange = { notifications = it }
             )
             HorizontalDivider(color = if (isDarkMode) Color.White.copy(alpha = 0.15f) else Color(0xFFE5E5EA), thickness = 0.5.dp, modifier = Modifier.padding(start = 62.dp))
@@ -433,7 +464,10 @@ fun SettingsScreen(
         }
 
         // 6. About / Actions Group
-        GlassCard(isDarkMode = isDarkMode) {
+        GlassCard(
+            backdrop = backdrop,
+            isDarkMode = isDarkMode
+        ) {
             SettingsActionRow(
                 icon = Icons.Default.SystemUpdate,
                 iconBg = Color(0xFF007AFF),
@@ -470,16 +504,17 @@ fun SettingsScreen(
 
     // Dialogs
     if (showManageDialog) {
-        ManageHouseholdDialog(currentUser = currentUser, onDismiss = { showManageDialog = false })
+        ManageHouseholdDialog(currentUser = currentUser, backdrop = backdrop, onDismiss = { showManageDialog = false })
     }
 
     if (showRemoveItemsDialog) {
-        RemoveLowStockItemsDialog(currentUser = currentUser, onDismiss = { showRemoveItemsDialog = false })
+        RemoveLowStockItemsDialog(currentUser = currentUser, backdrop = backdrop, onDismiss = { showRemoveItemsDialog = false })
     }
 
     if (showEditProfileDialog) {
         EditProfileDialog(
             currentUser = currentUser,
+            backdrop = backdrop,
             onDismiss = { showEditProfileDialog = false },
             onProfileUpdated = onProfileUpdated
         )
@@ -488,6 +523,7 @@ fun SettingsScreen(
     if (showSendFeedbackDialog) {
         SendFeedbackDialog(
             currentUser = currentUser,
+            backdrop = backdrop,
             onDismiss = { showSendFeedbackDialog = false }
         )
     }
@@ -495,12 +531,13 @@ fun SettingsScreen(
     if (showFeedbackFeedDialog) {
         HouseholdFeedbackFeedDialog(
             currentUser = currentUser,
+            backdrop = backdrop,
             onDismiss = { showFeedbackFeedDialog = false }
         )
     }
 
     if (showPrivacyPolicyDialog) {
-        PrivacyPolicyDialog(themePreference = currentUser.themePreference, onDismiss = { showPrivacyPolicyDialog = false })
+        PrivacyPolicyDialog(themePreference = currentUser.themePreference, backdrop = backdrop, onDismiss = { showPrivacyPolicyDialog = false })
     }
 
     showUpdateDialog?.let { updateInfo ->
@@ -511,6 +548,7 @@ fun SettingsScreen(
 @Composable
 fun RemoveLowStockItemsDialog(
     currentUser: UserProfile,
+    backdrop: Backdrop? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -519,6 +557,7 @@ fun RemoveLowStockItemsDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        backdrop = backdrop,
         themePreference = currentUser.themePreference,
         title = { Text("Remove Low Stock Items?", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
@@ -591,6 +630,7 @@ fun RemoveLowStockItemsDialog(
 @Composable
 fun HouseholdFeedbackFeedDialog(
     currentUser: UserProfile,
+    backdrop: Backdrop? = null,
     onDismiss: () -> Unit
 ) {
     val db = Firebase.firestore
@@ -627,6 +667,7 @@ fun HouseholdFeedbackFeedDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        backdrop = backdrop,
         themePreference = currentUser.themePreference,
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -796,6 +837,7 @@ fun FeedbackCardItem(
 @Composable
 fun ManageHouseholdDialog(
     currentUser: UserProfile,
+    backdrop: Backdrop? = null,
     onDismiss: () -> Unit
 ) {
     val db = Firebase.firestore
@@ -856,6 +898,7 @@ fun ManageHouseholdDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        backdrop = backdrop,
         themePreference = currentUser.themePreference,
         title = {
             Column {
@@ -1027,14 +1070,12 @@ private fun updateUserTheme(
 
     db.collection("users").document(updatedUser.uid)
         .set(hashMapOf("themePreference" to updatedUser.themePreference), SetOptions.merge())
-        .addOnSuccessListener {
-            Toast.makeText(context, "Theme set to ${updatedUser.themePreference}!", Toast.LENGTH_SHORT).show()
-        }
 }
 
 @Composable
 fun SendFeedbackDialog(
     currentUser: UserProfile,
+    backdrop: Backdrop? = null,
     onDismiss: () -> Unit
 ) {
     var message by remember { mutableStateOf("") }
@@ -1047,6 +1088,7 @@ fun SendFeedbackDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        backdrop = backdrop,
         themePreference = currentUser.themePreference,
         title = { Text("Send Feedback", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
         text = {
@@ -1173,8 +1215,10 @@ fun SettingsToggleRow(
     text: String,
     textColor: Color,
     checked: Boolean,
+    backdrop: Backdrop? = null,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val currentBackdrop = backdrop ?: rememberLayerBackdrop()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1189,15 +1233,10 @@ fun SettingsToggleRow(
         }
         Spacer(modifier = Modifier.width(16.dp))
         Text(text, color = textColor, fontSize = 16.sp, modifier = Modifier.weight(1f))
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = Color(0xFF007AFF),
-                uncheckedThumbColor = Color.LightGray,
-                uncheckedTrackColor = Color.White.copy(alpha = 0.20f)
-            )
+        LiquidToggle(
+            selected = { checked },
+            onSelect = onCheckedChange,
+            backdrop = currentBackdrop
         )
     }
 }
@@ -1205,10 +1244,12 @@ fun SettingsToggleRow(
 @Composable
 fun PrivacyPolicyDialog(
     themePreference: String = "DEFAULT",
+    backdrop: Backdrop? = null,
     onDismiss: () -> Unit
 ) {
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        backdrop = backdrop,
         themePreference = themePreference,
         title = { Text("Privacy Policy", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
@@ -1239,6 +1280,7 @@ fun PrivacyPolicyDialog(
 @Composable
 fun EditProfileDialog(
     currentUser: UserProfile,
+    backdrop: Backdrop? = null,
     onDismiss: () -> Unit,
     onProfileUpdated: (UserProfile) -> Unit
 ) {
@@ -1254,6 +1296,7 @@ fun EditProfileDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
+        backdrop = backdrop,
         themePreference = currentUser.themePreference,
         title = { Text("Edit Profile & Security", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {

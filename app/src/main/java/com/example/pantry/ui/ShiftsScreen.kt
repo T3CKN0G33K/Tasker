@@ -2,6 +2,7 @@ package com.example.pantry.ui
 
 import android.util.Log
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,14 +26,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -42,6 +47,16 @@ import com.example.liquidglass.LiquidGlassListItem
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.colorControls
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -192,12 +207,162 @@ val defaultOfficialTimecards = listOf(
 )
 
 @Composable
+fun ShiftGlassCard(
+    backdrop: Backdrop,
+    modifier: Modifier = Modifier,
+    isDarkMode: Boolean = true,
+    shape: Shape = RoundedCornerShape(24.dp),
+    onClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val containerColor = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.45f)
+    val clickableMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { shape },
+                effects = {
+                    colorControls(
+                        brightness = if (isDarkMode) 0f else 0.15f,
+                        saturation = 1.3f
+                    )
+                    vibrancy()
+                    blur(12.dp.toPx())
+                    lens(
+                        refractionHeight = 20.dp.toPx(),
+                        refractionAmount = 36.dp.toPx(),
+                        chromaticAberration = true
+                    )
+                },
+                highlight = { Highlight(width = 1.2.dp, alpha = 0.45f) },
+                shadow = { Shadow(radius = 16.dp, alpha = 0.25f, offset = DpOffset(0.dp, 6.dp)) },
+                innerShadow = { InnerShadow(radius = 8.dp, alpha = 0.20f) },
+                onDrawSurface = { drawRect(containerColor) }
+            )
+            .then(clickableMod)
+            .padding(18.dp)
+    ) {
+        CompositionLocalProvider(
+            LocalTextStyle provides TextStyle(
+                color = Color.White,
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = Color.Black.copy(alpha = 0.60f),
+                    offset = Offset(0f, 2f),
+                    blurRadius = 6f
+                )
+            )
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+fun ShiftGlassListItem(
+    title: String,
+    backdrop: Backdrop,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    leadingIcon: @Composable (() -> Unit)? = null,
+    trailingContent: @Composable (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    isDarkMode: Boolean = true,
+    shape: Shape = RoundedCornerShape(20.dp)
+) {
+    val containerColor = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.45f)
+    val clickableMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { shape },
+                effects = {
+                    colorControls(
+                        brightness = if (isDarkMode) 0f else 0.15f,
+                        saturation = 1.3f
+                    )
+                    vibrancy()
+                    blur(12.dp.toPx())
+                    lens(
+                        refractionHeight = 20.dp.toPx(),
+                        refractionAmount = 36.dp.toPx(),
+                        chromaticAberration = true
+                    )
+                },
+                highlight = { Highlight(width = 1.2.dp, alpha = 0.45f) },
+                shadow = { Shadow(radius = 16.dp, alpha = 0.25f, offset = DpOffset(0.dp, 6.dp)) },
+                innerShadow = { InnerShadow(radius = 8.dp, alpha = 0.20f) },
+                onDrawSurface = { drawRect(containerColor) }
+            )
+            .then(clickableMod)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        CompositionLocalProvider(
+            LocalTextStyle provides TextStyle(
+                color = Color.White,
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = Color.Black.copy(alpha = 0.60f),
+                    offset = Offset(0f, 2f),
+                    blurRadius = 6f
+                )
+            )
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (leadingIcon != null) {
+                        leadingIcon()
+                        Spacer(modifier = Modifier.width(12.dp))
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            color = if (isDarkMode) Color.White else Color.Black,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (subtitle != null) {
+                            Text(
+                                text = subtitle,
+                                color = if (isDarkMode) Color.White.copy(alpha = 0.70f) else Color.Black.copy(alpha = 0.60f),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+
+                if (trailingContent != null) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    trailingContent()
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ShiftsScreen(
     currentUser: UserProfile = UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
+    backdrop: Backdrop? = null,
     isDarkMode: Boolean = true,
     themePreference: String = "DEFAULT",
     onProfileUpdated: (UserProfile) -> Unit = {}
 ) {
+    val currentBackdrop = backdrop ?: rememberLayerBackdrop()
     val isPreview = LocalInspectionMode.current
     val context = LocalContext.current
 
@@ -386,24 +551,30 @@ fun ShiftsScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    IconButton(
-                        onClick = {
-                            try {
-                                showHistoryDialog = true
-                            } catch (e: Exception) {
-                                Log.e("ShiftCrash", "Caught crash on History icon", e)
-                                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                            }
-                        },
+                    Box(
                         modifier = Modifier
                             .size(42.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.10f))
-                            .border(
-                                width = 0.5.dp,
-                                color = Color.White.copy(alpha = 0.25f),
-                                shape = CircleShape
+                            .drawBackdrop(
+                                backdrop = currentBackdrop,
+                                shape = { CircleShape },
+                                effects = {
+                                    vibrancy()
+                                    blur(4.dp.toPx())
+                                    lens(8.dp.toPx(), 12.dp.toPx())
+                                },
+                                highlight = { Highlight(width = 1.dp, alpha = 0.45f) },
+                                shadow = { Shadow(radius = 8.dp, alpha = 0.2f) },
+                                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.12f)) }
                             )
+                            .clickable {
+                                try {
+                                    showHistoryDialog = true
+                                } catch (e: Exception) {
+                                    Log.e("ShiftCrash", "Caught crash on History icon", e)
+                                    Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.History,
@@ -417,11 +588,11 @@ fun ShiftsScreen(
 
             // 1. Top Hero: "Active Shift & Punch Telemetry" (GlassCard)
             item {
-                GlassCard(isDarkMode = isDarkMode) {
+                ShiftGlassCard(
+                    backdrop = currentBackdrop,
+                    isDarkMode = isDarkMode
+                ) {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Row(
@@ -447,9 +618,16 @@ fun ShiftsScreen(
 
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White.copy(alpha = 0.08f))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .drawBackdrop(
+                                        backdrop = currentBackdrop,
+                                        shape = { RoundedCornerShape(percent = 50) },
+                                        effects = {
+                                            lens(refractionHeight = 6.dp.toPx(), refractionAmount = 10.dp.toPx())
+                                        },
+                                        highlight = { Highlight(width = 1.dp, alpha = 0.35f) },
+                                        onDrawSurface = { drawRect(Color.White.copy(alpha = 0.08f)) }
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
                             ) {
                                 Text("Personal record for comparison", color = textSub, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                             }
@@ -472,22 +650,42 @@ fun ShiftsScreen(
 
                         // Primary Action Area with Subdued Disclosure
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            GlassHeroButton(
-                                onClick = {
-                                    try {
-                                        Log.d("SHIFTS_DEBUG", "Record Work Time clicked: opening WorkTimeSelectionDialog")
-                                        isRecordingActive = !isRecordingActive
-                                        activeDialogStep = 1 // Open WorkTimeSelectionDialog
-                                    } catch (e: Exception) {
-                                        Log.e("ShiftCrash", "Caught click crash on Record Work Time", e)
-                                        Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .drawBackdrop(
+                                        backdrop = currentBackdrop,
+                                        shape = { RoundedCornerShape(16.dp) },
+                                        effects = {
+                                            vibrancy()
+                                            blur(8.dp.toPx())
+                                            lens(12.dp.toPx(), 16.dp.toPx())
+                                        },
+                                        highlight = { Highlight(width = 1.2.dp, alpha = 0.6f) },
+                                        shadow = { Shadow(radius = 12.dp, alpha = 0.35f) },
+                                        onDrawSurface = { drawRect(activeAccentColor.copy(alpha = 0.85f)) }
+                                    )
+                                    .clickable {
+                                        try {
+                                            Log.d("SHIFTS_DEBUG", "Record Work Time clicked: opening WorkTimeSelectionDialog")
+                                            isRecordingActive = !isRecordingActive
+                                            activeDialogStep = 1 // Open WorkTimeSelectionDialog
+                                        } catch (e: Exception) {
+                                            Log.e("ShiftCrash", "Caught click crash on Record Work Time", e)
+                                            Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.PunchClock, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Record Work Time", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(Icons.Default.PunchClock, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Record Work Time", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
 
                             Text(
@@ -508,24 +706,32 @@ fun ShiftsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    GlassCard(
+                    ShiftGlassCard(
+                        backdrop = currentBackdrop,
                         isDarkMode = isDarkMode,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { showEditPtoDialog = true }
+                        modifier = Modifier.weight(1f),
+                        onClick = { showEditPtoDialog = true }
                     ) {
                         Row(
-                            modifier = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF34C759).copy(alpha = 0.20f)),
+                                    .size(42.dp)
+                                    .drawBackdrop(
+                                        backdrop = currentBackdrop,
+                                        shape = { CircleShape },
+                                        effects = {
+                                            vibrancy()
+                                            blur(4.dp.toPx())
+                                            lens(8.dp.toPx(), 12.dp.toPx())
+                                        },
+                                        highlight = { Highlight(width = 1.dp, alpha = 0.5f) },
+                                        onDrawSurface = { drawRect(Color(0xFF34C759).copy(alpha = 0.20f)) }
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.LocalHospital, contentDescription = null, tint = Color(0xFF34C759), modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.LocalHospital, contentDescription = null, tint = Color(0xFF34C759), modifier = Modifier.size(20.dp))
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
@@ -535,24 +741,32 @@ fun ShiftsScreen(
                         }
                     }
 
-                    GlassCard(
+                    ShiftGlassCard(
+                        backdrop = currentBackdrop,
                         isDarkMode = isDarkMode,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { showEditPtoDialog = true }
+                        modifier = Modifier.weight(1f),
+                        onClick = { showEditPtoDialog = true }
                     ) {
                         Row(
-                            modifier = Modifier.padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(activeAccentColor.copy(alpha = 0.20f)),
+                                    .size(42.dp)
+                                    .drawBackdrop(
+                                        backdrop = currentBackdrop,
+                                        shape = { CircleShape },
+                                        effects = {
+                                            vibrancy()
+                                            blur(4.dp.toPx())
+                                            lens(8.dp.toPx(), 12.dp.toPx())
+                                        },
+                                        highlight = { Highlight(width = 1.dp, alpha = 0.5f) },
+                                        onDrawSurface = { drawRect(activeAccentColor.copy(alpha = 0.20f)) }
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.BeachAccess, contentDescription = null, tint = activeAccentColor, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.BeachAccess, contentDescription = null, tint = activeAccentColor, modifier = Modifier.size(20.dp))
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
@@ -566,9 +780,11 @@ fun ShiftsScreen(
 
             // 3. Interactive Pay Period & Timecards Header
             item {
-                GlassCard(isDarkMode = isDarkMode) {
+                ShiftGlassCard(
+                    backdrop = currentBackdrop,
+                    isDarkMode = isDarkMode
+                ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Row(
@@ -580,12 +796,24 @@ fun ShiftsScreen(
                                 Text("Personal Pay Estimate", color = textSub, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 Text(activePeriodRange, color = textMain, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             }
-                            Text(
-                                text = "${String.format(Locale.US, "%.1f", totalHours)} / 80.0 hrs",
-                                color = activeAccentColor,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .drawBackdrop(
+                                        backdrop = currentBackdrop,
+                                        shape = { RoundedCornerShape(percent = 50) },
+                                        effects = { lens(8.dp.toPx(), 12.dp.toPx()) },
+                                        highlight = { Highlight(width = 1.dp, alpha = 0.4f) },
+                                        onDrawSurface = { drawRect(Color.White.copy(alpha = 0.08f)) }
+                                    )
+                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "${String.format(Locale.US, "%.1f", totalHours)} / 80.0 hrs",
+                                    color = activeAccentColor,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
 
                         // Progress Bar
@@ -641,21 +869,32 @@ fun ShiftsScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    IconButton(
-                        onClick = {
-                            try {
-                                Log.d("SHIFTS_DEBUG", "Official '+' icon clicked: Opening EnterOfficialTimecardDialog")
-                                editingOfficialTimecard = null
-                                activeDialogStep = 4 // Open EnterOfficialTimecardDialog
-                            } catch (e: Exception) {
-                                Log.e("ShiftCrash", "Caught click crash on Official '+' button", e)
-                                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                            }
-                        },
+                    Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.08f))
+                            .size(36.dp)
+                            .drawBackdrop(
+                                backdrop = currentBackdrop,
+                                shape = { CircleShape },
+                                effects = {
+                                    vibrancy()
+                                    blur(4.dp.toPx())
+                                    lens(8.dp.toPx(), 12.dp.toPx())
+                                },
+                                highlight = { Highlight(width = 1.dp, alpha = 0.40f) },
+                                shadow = { Shadow(radius = 8.dp, alpha = 0.2f) },
+                                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.12f)) }
+                            )
+                            .clickable {
+                                try {
+                                    Log.d("SHIFTS_DEBUG", "Official '+' icon clicked: Opening EnterOfficialTimecardDialog")
+                                    editingOfficialTimecard = null
+                                    activeDialogStep = 4 // Open EnterOfficialTimecardDialog
+                                } catch (e: Exception) {
+                                    Log.e("ShiftCrash", "Caught click crash on Official '+' button", e)
+                                    Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
@@ -686,10 +925,10 @@ fun ShiftsScreen(
                         "Official Paid: ${if (otPaid != null) String.format(Locale.US, "%.1f hrs", otPaid) else "N/A"}${if (hoursDiff != null) " (${String.format(Locale.US, "%+.1f hrs diff", hoursDiff)})" else ""}"
                     }.getOrDefault("Official Paid: N/A")
 
-                    LiquidGlassListItem(
+                    ShiftGlassListItem(
                         title = "${otRecord.periodStart} – ${otRecord.periodEnd}",
                         subtitle = subtitleStr,
-                        preset = ChromaticDispersionPresets.Standard,
+                        backdrop = currentBackdrop,
                         isDarkMode = isDarkMode,
                         onClick = {
                             try {
@@ -704,16 +943,26 @@ fun ShiftsScreen(
                         leadingIcon = {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(badgeColor.copy(alpha = 0.20f)),
+                                    .size(46.dp)
+                                    .drawBackdrop(
+                                        backdrop = currentBackdrop,
+                                        shape = { CircleShape },
+                                        effects = {
+                                            vibrancy()
+                                            blur(4.dp.toPx())
+                                            lens(8.dp.toPx(), 12.dp.toPx())
+                                        },
+                                        highlight = { Highlight(width = 1.dp, alpha = 0.5f) },
+                                        innerShadow = { InnerShadow(radius = 4.dp, alpha = 0.25f) },
+                                        onDrawSurface = { drawRect(badgeColor.copy(alpha = 0.20f)) }
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.PunchClock,
                                     contentDescription = null,
                                     tint = badgeColor,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         },
@@ -721,9 +970,14 @@ fun ShiftsScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(badgeColor.copy(alpha = 0.20f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .drawBackdrop(
+                                            backdrop = currentBackdrop,
+                                            shape = { RoundedCornerShape(percent = 50) },
+                                            effects = { lens(6.dp.toPx(), 10.dp.toPx()) },
+                                            highlight = { Highlight(width = 1.dp, alpha = 0.35f) },
+                                            onDrawSurface = { drawRect(badgeColor.copy(alpha = 0.20f)) }
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Text(otRecord.status, color = badgeColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -768,10 +1022,10 @@ fun ShiftsScreen(
                         "$${String.format(Locale.US, "%.2f", shift.grossEarnings)}"
                     }.getOrDefault("$0.00")
 
-                    LiquidGlassListItem(
+                    ShiftGlassListItem(
                         title = shift.dateLabel,
                         subtitle = subtitleStr,
-                        preset = ChromaticDispersionPresets.Standard,
+                        backdrop = currentBackdrop,
                         isDarkMode = isDarkMode,
                         onClick = {
                             try {
@@ -789,33 +1043,60 @@ fun ShiftsScreen(
                         leadingIcon = {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isZeroHours) Color.White.copy(alpha = 0.08f) else activeAccentColor.copy(alpha = 0.20f)),
+                                    .size(46.dp)
+                                    .drawBackdrop(
+                                        backdrop = currentBackdrop,
+                                        shape = { CircleShape },
+                                        effects = {
+                                            vibrancy()
+                                            blur(4.dp.toPx())
+                                            lens(8.dp.toPx(), 12.dp.toPx())
+                                        },
+                                        highlight = { Highlight(width = 1.dp, alpha = 0.5f) },
+                                        innerShadow = { InnerShadow(radius = 4.dp, alpha = 0.25f) },
+                                        onDrawSurface = {
+                                            drawRect(if (isZeroHours) Color.White.copy(alpha = 0.08f) else activeAccentColor.copy(alpha = 0.20f))
+                                        }
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Schedule,
                                     contentDescription = null,
                                     tint = if (isZeroHours) textSub else activeAccentColor,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         },
                         trailingContent = {
                             Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "${String.format(Locale.US, "%.1f", shift.totalHours)} hrs",
-                                    color = if (isZeroHours) textSub else textMain,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = formattedEarnings,
-                                    color = if (isZeroHours) Color.Transparent else Color(0xFF34C759),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .drawBackdrop(
+                                            backdrop = currentBackdrop,
+                                            shape = { RoundedCornerShape(percent = 50) },
+                                            effects = { lens(6.dp.toPx(), 10.dp.toPx()) },
+                                            highlight = { Highlight(width = 1.dp, alpha = 0.4f) },
+                                            onDrawSurface = { drawRect(Color.White.copy(alpha = 0.08f)) }
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "${String.format(Locale.US, "%.1f", shift.totalHours)} hrs",
+                                        color = if (isZeroHours) textSub else textMain,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                if (!isZeroHours) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = formattedEarnings,
+                                        color = Color(0xFF34C759),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
                     )
@@ -838,20 +1119,31 @@ fun ShiftsScreen(
                         fontWeight = FontWeight.Bold
                     )
 
-                    IconButton(
-                        onClick = {
-                            try {
-                                editingPunch = null
-                                activeDialogStep = 3 // Open AddOrCorrectPunchDialog
-                            } catch (e: Exception) {
-                                Log.e("ShiftCrash", "Caught click crash on Punch '+' button", e)
-                                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                            }
-                        },
+                    Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.08f))
+                            .size(36.dp)
+                            .drawBackdrop(
+                                backdrop = currentBackdrop,
+                                shape = { CircleShape },
+                                effects = {
+                                    vibrancy()
+                                    blur(4.dp.toPx())
+                                    lens(8.dp.toPx(), 12.dp.toPx())
+                                },
+                                highlight = { Highlight(width = 1.dp, alpha = 0.40f) },
+                                shadow = { Shadow(radius = 8.dp, alpha = 0.2f) },
+                                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.12f)) }
+                            )
+                            .clickable {
+                                try {
+                                    editingPunch = null
+                                    activeDialogStep = 3 // Open AddOrCorrectPunchDialog
+                                } catch (e: Exception) {
+                                    Log.e("ShiftCrash", "Caught click crash on Punch '+' button", e)
+                                    Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
@@ -869,10 +1161,10 @@ fun ShiftsScreen(
                 }
             } else {
                 items(personalPunches, key = { "p_" + it.id }) { punch ->
-                    LiquidGlassListItem(
+                    ShiftGlassListItem(
                         title = "${punch.typeLabel} • ${punch.dateLabel} at ${punch.timeLabel}",
                         subtitle = "Source: ${punch.source}${punch.notes?.let { " • $it" } ?: ""}",
-                        preset = ChromaticDispersionPresets.Standard,
+                        backdrop = currentBackdrop,
                         isDarkMode = isDarkMode,
                         onClick = {
                             try {
@@ -887,16 +1179,26 @@ fun ShiftsScreen(
                         leadingIcon = {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(activeAccentColor.copy(alpha = 0.20f)),
+                                    .size(46.dp)
+                                    .drawBackdrop(
+                                        backdrop = currentBackdrop,
+                                        shape = { CircleShape },
+                                        effects = {
+                                            vibrancy()
+                                            blur(4.dp.toPx())
+                                            lens(8.dp.toPx(), 12.dp.toPx())
+                                        },
+                                        highlight = { Highlight(width = 1.dp, alpha = 0.5f) },
+                                        innerShadow = { InnerShadow(radius = 4.dp, alpha = 0.25f) },
+                                        onDrawSurface = { drawRect(activeAccentColor.copy(alpha = 0.20f)) }
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.PunchClock,
                                     contentDescription = null,
                                     tint = activeAccentColor,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         },
@@ -904,9 +1206,14 @@ fun ShiftsScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color.White.copy(alpha = 0.08f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        .drawBackdrop(
+                                            backdrop = currentBackdrop,
+                                            shape = { RoundedCornerShape(percent = 50) },
+                                            effects = { lens(6.dp.toPx(), 10.dp.toPx()) },
+                                            highlight = { Highlight(width = 1.dp, alpha = 0.35f) },
+                                            onDrawSurface = { drawRect(Color.White.copy(alpha = 0.08f)) }
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Text(punch.status, color = textSub, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -925,24 +1232,17 @@ fun ShiftsScreen(
         }
     }
 
-    // Consolidated Single Dialog Window Host
+    // Consolidated Single Glass Bottom Sheet Host
     if (activeDialogStep > 0) {
-        Dialog(
+        GlassBottomSheet(
             onDismissRequest = {
                 activeDialogStep = 0
                 editingShift = null
                 editingPunch = null
                 editingOfficialTimecard = null
             },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            MaterialTheme {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+            themePreference = currentUser.themePreference
+        ) { _ ->
                     when (activeDialogStep) {
                         1 -> WorkTimeSelectionDialog(
                             themePreference = currentUser.themePreference,
@@ -1021,8 +1321,6 @@ fun ShiftsScreen(
                             }
                         )
                     }
-                }
-            }
         }
     }
 
@@ -1063,128 +1361,110 @@ fun WorkTimeSelectionDialog(
         Color(0xFF007AFF)
     }
 
-    Box(
+    Column(
         modifier = Modifier
-            .fillMaxWidth(0.92f)
-            .wrapContentHeight()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF161B22).copy(alpha = 0.96f))
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.35f),
-                        Color.White.copy(alpha = 0.08f)
-                    )
-                ),
-                shape = RoundedCornerShape(24.dp)
-            )
+            .fillMaxWidth()
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Record Work Time",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color.White.copy(alpha = 0.70f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            // Selection Action Cards
-            val options = listOf(
-                "Add Full Shift" to "Record start, end, optional meal break, rate, and notes.",
-                "Add or Correct a Punch" to "Record one clock-in, meal, or clock-out timestamp.",
-                "Enter Official Timecard Values" to "Manually record values from the official app for personal comparison."
+            Text(
+                text = "Record Work Time",
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
             )
 
-            options.forEachIndexed { index, (title, subtitle) ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.08f))
-                        .border(
-                            width = 1.dp,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.35f),
-                                    Color.White.copy(alpha = 0.08f)
-                                )
-                            ),
-                            shape = RoundedCornerShape(16.dp)
-                        )
-                        .clickable {
-                            try {
-                                onSelectOption(index)
-                            } catch (e: Exception) {
-                                Log.e("ShiftCrash", "Caught click crash on Record Work Time Option $index", e)
-                                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = title,
-                                color = Color.White,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = subtitle,
-                                color = Color.White.copy(alpha = 0.65f),
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp
-                            )
-                        }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = Color.White.copy(alpha = 0.70f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
 
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = activeAccentColor,
-                            modifier = Modifier.size(20.dp)
+        // Selection Action Cards
+        val options = listOf(
+            "Add Full Shift" to "Record start, end, optional meal break, rate, and notes.",
+            "Add or Correct a Punch" to "Record one clock-in, meal, or clock-out timestamp.",
+            "Enter Official Timecard Values" to "Manually record values from the official app for personal comparison."
+        )
+
+        options.forEachIndexed { index, (title, subtitle) ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.35f),
+                                Color.White.copy(alpha = 0.08f)
+                            )
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                    .clickable {
+                        try {
+                            onSelectOption(index)
+                        } catch (e: Exception) {
+                            Log.e("ShiftCrash", "Caught click crash on Record Work Time Option $index", e)
+                            Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = subtitle,
+                            color = Color.White.copy(alpha = 0.65f),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
                         )
                     }
+
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = activeAccentColor,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            Text(
-                text = "Personal record only — this does not affect your employer timecard.",
-                color = Color.White.copy(alpha = 0.60f),
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
         }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Text(
+            text = "Personal record only — this does not affect your employer timecard.",
+            color = Color.White.copy(alpha = 0.60f),
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -1314,55 +1594,38 @@ fun AddFullShiftDialog(
         calculateShiftSummary(clockIn, clockOut, mealStart, mealEnd, hourlyWageText)
     }
 
-    Box(
+    Column(
         modifier = Modifier
-            .fillMaxWidth(0.94f)
-            .wrapContentHeight()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF161B22).copy(alpha = 0.96f))
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.35f),
-                        Color.White.copy(alpha = 0.08f)
-                    )
-                ),
-                shape = RoundedCornerShape(24.dp)
-            )
+            .fillMaxWidth()
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        // Header Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (editingShift != null) "Edit Full Shift (Personal)" else "Add Full Shift (Personal)",
-                    color = Color.White,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            Text(
+                text = if (editingShift != null) "Edit Full Shift (Personal)" else "Add Full Shift (Personal)",
+                color = Color.White,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold
+            )
 
-                IconButton(
-                    onClick = onDismiss,
-                    enabled = !isSaving && !isDeleting,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color.White.copy(alpha = 0.70f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+            IconButton(
+                onClick = onDismiss,
+                enabled = !isSaving && !isDeleting,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = Color.White.copy(alpha = 0.70f),
+                    modifier = Modifier.size(18.dp)
+                )
             }
+        }
 
             val inputColors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = Color.White.copy(alpha = 0.10f),
@@ -1672,7 +1935,6 @@ fun AddFullShiftDialog(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
-        }
     }
 
     // Delete Confirmation Dialog for Shift
@@ -1725,38 +1987,14 @@ fun ConfirmDeleteShiftDialog(
     onDismiss: () -> Unit,
     onConfirmDelete: () -> Unit
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
+    GlassBottomSheet(
+        onDismissRequest = onDismiss
+    ) { _ ->
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .wrapContentHeight()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF161B22).copy(alpha = 0.96f))
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.35f),
-                                Color.White.copy(alpha = 0.08f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(20.dp)
-                    )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                .fillMaxWidth()
+                .padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
                         text = "Delete Personal Shift?",
@@ -1789,8 +2027,6 @@ fun ConfirmDeleteShiftDialog(
                         }
                     }
                 }
-            }
-        }
     }
 }
 
@@ -1843,30 +2079,13 @@ fun AddOrCorrectPunchDialog(
     var saveErrorMessage by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    Box(
+    Column(
         modifier = Modifier
-            .fillMaxWidth(0.94f)
-            .wrapContentHeight()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF161B22).copy(alpha = 0.96f))
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.35f),
-                        Color.White.copy(alpha = 0.08f)
-                    )
-                ),
-                shape = RoundedCornerShape(24.dp)
-            )
+            .fillMaxWidth()
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // Header Row
+        // Header Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2179,7 +2398,6 @@ fun AddOrCorrectPunchDialog(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
-        }
     }
 
     // Delete Confirmation Dialog
@@ -2232,69 +2450,43 @@ fun ConfirmDeletePunchDialog(
     onDismiss: () -> Unit,
     onConfirmDelete: () -> Unit
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
+    GlassBottomSheet(
+        onDismissRequest = onDismiss
+    ) { _ ->
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .wrapContentHeight()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF161B22).copy(alpha = 0.96f))
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.35f),
-                                Color.White.copy(alpha = 0.08f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(20.dp)
-                    )
+            Text(
+                text = "Delete Personal Punch?",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Are you sure you want to delete this personal punch record? This action cannot be undone.",
+                color = Color.White.copy(alpha = 0.80f),
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = Color.Gray, fontWeight = FontWeight.Medium)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = onConfirmDelete,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
                 ) {
-                    Text(
-                        text = "Delete Personal Punch?",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        text = "Are you sure you want to delete this personal punch record? This action cannot be undone.",
-                        color = Color.White.copy(alpha = 0.80f),
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = onDismiss) {
-                            Text("Cancel", color = Color.Gray, fontWeight = FontWeight.Medium)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = onConfirmDelete,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
-                        ) {
-                            Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                    }
+                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2353,29 +2545,12 @@ fun EnterOfficialTimecardDialog(
         else -> "Needs review"
     }
 
-    Box(
+    Column(
         modifier = Modifier
-            .fillMaxWidth(0.94f)
-            .wrapContentHeight()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF161B22).copy(alpha = 0.96f))
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.35f),
-                        Color.White.copy(alpha = 0.08f)
-                    )
-                ),
-                shape = RoundedCornerShape(24.dp)
-            )
+            .fillMaxWidth()
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2698,7 +2873,6 @@ fun EnterOfficialTimecardDialog(
                     }
                 }
             }
-        }
     }
 
     // Delete Confirmation Dialog
@@ -2751,69 +2925,43 @@ fun ConfirmDeleteTimecardDialog(
     onDismiss: () -> Unit,
     onConfirmDelete: () -> Unit
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
+    GlassBottomSheet(
+        onDismissRequest = onDismiss
+    ) { _ ->
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .wrapContentHeight()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF161B22).copy(alpha = 0.96f))
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.35f),
-                                Color.White.copy(alpha = 0.08f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(20.dp)
-                    )
+            Text(
+                text = "Delete Official Timecard Record?",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Are you sure you want to delete this recorded official timecard entry? This action cannot be undone.",
+                color = Color.White.copy(alpha = 0.80f),
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = Color.Gray, fontWeight = FontWeight.Medium)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = onConfirmDelete,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
                 ) {
-                    Text(
-                        text = "Delete Official Timecard Record?",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Text(
-                        text = "Are you sure you want to delete this recorded official timecard entry? This action cannot be undone.",
-                        color = Color.White.copy(alpha = 0.80f),
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = onDismiss) {
-                            Text("Cancel", color = Color.Gray, fontWeight = FontWeight.Medium)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = onConfirmDelete,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30))
-                        ) {
-                            Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                    }
+                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2830,44 +2978,21 @@ fun ArchivedPayHistoryDialog(
     themePreference: String = "DEFAULT",
     onDismiss: () -> Unit
 ) {
-    Dialog(
+    GlassBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
+        themePreference = themePreference
+    ) { _ ->
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .wrapContentHeight()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xFF161B22).copy(alpha = 0.96f))
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.35f),
-                                Color.White.copy(alpha = 0.08f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
                         Text(
                             text = "Archived Pay Cycles",
                             color = Color.White,
@@ -2935,20 +3060,7 @@ fun ArchivedPayHistoryDialog(
                             }
                         }
                     }
-                }
-            }
         }
-    }
-}
-
-@Preview(showBackground = true, backgroundColor = 0xFF0B132B)
-@Composable
-fun ShiftsScreenPreview() {
-    MaterialTheme {
-        ShiftsScreen(
-            currentUser = UserProfile("preview_user", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_preview"),
-            isDarkMode = true
-        )
     }
 }
 
@@ -2976,55 +3088,32 @@ fun EditPtoHoursDialog(
         Color(0xFF007AFF)
     }
 
-    Dialog(
+    GlassBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
+        themePreference = themePreference
+    ) { _ ->
+        Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .wrapContentHeight()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xFF161B22).copy(alpha = 0.96f))
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.35f),
-                                Color.White.copy(alpha = 0.08f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Edit PTO Balances",
-                            color = Color.White,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                Text(
+                    text = "Edit PTO Balances",
+                    color = Color.White,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold
+                )
 
-                        IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.70f), modifier = Modifier.size(18.dp))
-                        }
-                    }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.70f), modifier = Modifier.size(18.dp))
+                }
+            }
 
                     val inputColors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = Color.White.copy(alpha = 0.10f),
@@ -3104,7 +3193,5 @@ fun EditPtoHoursDialog(
                         Text("Save PTO Balances", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-            }
-        }
     }
 }

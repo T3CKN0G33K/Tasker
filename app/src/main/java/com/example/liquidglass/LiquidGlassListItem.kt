@@ -41,26 +41,26 @@ fun LiquidGlassListItem(
     onClick: (() -> Unit)? = null,
     preset: ChromaticDispersionPreset = ChromaticDispersionPresets.Subdued,
     isDarkMode: Boolean = true,
-    shape: Shape = RoundedCornerShape(20.dp)
+    shape: Shape = RoundedCornerShape(18.dp)
 ) {
     val containerBg = if (isDarkMode) {
-        Color.White.copy(alpha = 0.12f)
+        Color.White.copy(alpha = 0.08f)
     } else {
-        Color.White.copy(alpha = 0.70f)
+        Color.White.copy(alpha = 0.55f)
     }
 
     val containerBorder = if (isDarkMode) {
-        Brush.verticalGradient(
+        Brush.linearGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.45f),
-                Color.White.copy(alpha = 0.12f)
+                Color.White.copy(alpha = 0.35f),
+                Color.White.copy(alpha = 0.08f)
             )
         )
     } else {
-        Brush.verticalGradient(
+        Brush.linearGradient(
             colors = listOf(
-                Color.White,
-                Color.White.copy(alpha = 0.50f)
+                Color.White.copy(alpha = 0.80f),
+                Color.White.copy(alpha = 0.30f)
             )
         )
     }
@@ -81,7 +81,7 @@ fun LiquidGlassListItem(
             .clip(shape)
             .then(clickableModifier)
     ) {
-        // LAYER 1: Opaque Safe Glass Backdrop
+        // LAYER 1: Apple-style Liquid Glass Item Backdrop
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -89,8 +89,8 @@ fun LiquidGlassListItem(
                     try {
                         if (size.width > 0f && size.height > 0f && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             val androidBlur = RenderEffect.createBlurEffect(
-                                (18f * density).coerceAtLeast(1f),
-                                (18f * density).coerceAtLeast(1f),
+                                (10f * density).coerceAtLeast(1f),
+                                (10f * density).coerceAtLeast(1f),
                                 Shader.TileMode.CLAMP
                             )
                             renderEffect = androidBlur.asComposeRenderEffect()

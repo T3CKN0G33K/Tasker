@@ -1,10 +1,10 @@
 package com.example.pantry.service
 
-import android.R
-import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.util.Log
-import androidx.core.app.NotificationCompat
+import com.example.pantry.notifications.NotificationHelper
+import com.example.tasker.MainActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -19,9 +19,22 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
-        val title = remoteMessage.notification?.title ?: "Restock Alert"
-        val body = remoteMessage.notification?.body ?: "An item is running low!"
-        showLocalNotification(applicationContext, title, body)
+        val title = remoteMessage.notification?.title ?: remoteMessage.data["title"] ?: "Restock Alert"
+        val body = remoteMessage.notification?.body ?: remoteMessage.data["body"] ?: "An item in your household is running low!"
+
+        Log.d("FCM", "Received FCM message in background/foreground: $title - $body")
+
+        NotificationHelper.postNotification(
+            context = applicationContext,
+            channelId = NotificationHelper.LOW_STOCK_CHANNEL_ID,
+            notificationId = System.currentTimeMillis().toInt(),
+            title = title,
+            message = body,
+            intent = Intent(applicationContext, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("target_screen", "pantry")
+            }
+        )
     }
 
     override fun onNewToken(token: String) {
@@ -51,23 +64,23 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     companion object {
-        const val CHANNEL_ID = "restock_alerts_channel"
+        const val CHANNEL_ID = NotificationHelper.LOW_STOCK_CHANNEL_ID
 
         var instance: MyFirebaseMessagingService? = null
             private set
 
         fun showLocalNotification(context: Context, title: String, message: String) {
-            val notificationManager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            
-            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_dialog_alert)
-                .setContentTitle(title)
-                .setContentText(message)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .build()
-
-            notificationManager.notify(System.currentTimeMillis().toInt(), notification)
+            NotificationHelper.postNotification(
+                context = context,
+                channelId = NotificationHelper.LOW_STOCK_CHANNEL_ID,
+                notificationId = System.currentTimeMillis().toInt(),
+                title = title,
+                message = message,
+                intent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra("target_screen", "pantry")
+                }
+            )
         }
     }
 }

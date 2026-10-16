@@ -89,6 +89,24 @@ fun AppRoot() {
         }
     }
 
+    // Background WorkManager Sync & FCM Household Subscription
+    LaunchedEffect(activeUser?.householdId) {
+        activeUser?.householdId?.let { hid ->
+            com.google.firebase.messaging.FirebaseMessaging.getInstance()
+                .subscribeToTopic("household_$hid")
+
+            val lowStockWorkRequest = androidx.work.PeriodicWorkRequestBuilder<com.example.pantry.service.LowStockWorker>(
+                15, java.util.concurrent.TimeUnit.MINUTES
+            ).build()
+
+            androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "background_low_stock_sync",
+                androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+                lowStockWorkRequest
+            )
+        }
+    }
+
     // Dynamic System Status Bar Appearance (Prevents washed out status bar text in Light Mode!)
     val view = LocalView.current
     if (!view.isInEditMode) {

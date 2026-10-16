@@ -24,10 +24,22 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
+import com.kyant.shapes.Capsule
 import androidx.compose.ui.unit.sp
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -89,44 +101,57 @@ fun GlassStepperButton(
 fun GlassHeroButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    backdrop: Backdrop? = null,
     enabled: Boolean = true,
     isDarkMode: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
-    val buttonBg = Color(0xFF007AFF).copy(alpha = 0.35f)
-    val buttonBorder = Brush.verticalGradient(
-        colors = listOf(
-            Color.White.copy(alpha = 0.65f),
-            Color(0xFF007AFF).copy(alpha = 0.30f)
-        )
-    )
+    val currentBackdrop = backdrop ?: rememberLayerBackdrop()
+    val isLightTheme = !isDarkMode
+    val containerColor = if (isLightTheme) Color.White.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.12f)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(buttonBg)
-            .border(
-                width = 1.5.dp,
-                brush = buttonBorder,
-                shape = RoundedCornerShape(16.dp)
+            .drawBackdrop(
+                backdrop = currentBackdrop,
+                shape = { Capsule() },
+                effects = {
+                    vibrancy()
+                    blur(8.dp.toPx())
+                    lens(20.dp.toPx(), 36.dp.toPx(), chromaticAberration = true)
+                },
+                highlight = { Highlight.Default.copy(alpha = 0.50f) },
+                shadow = { Shadow(alpha = 0.30f, radius = 12.dp) },
+                innerShadow = { InnerShadow(radius = 8.dp, alpha = 0.20f) },
+                onDrawSurface = { drawRect(containerColor) }
             )
             .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(bounded = true)
-            ) { onClick() },
+                indication = null
+            ) { onClick() }
+            .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-            content = content
-        )
+        CompositionLocalProvider(
+            LocalTextStyle provides TextStyle(
+                color = Color.White,
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = Color.Black.copy(alpha = 0.65f),
+                    offset = Offset(0f, 2f),
+                    blurRadius = 6f
+                )
+            )
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                content = content
+            )
+        }
     }
 }
 

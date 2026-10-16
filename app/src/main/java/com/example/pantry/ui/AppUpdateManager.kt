@@ -142,7 +142,11 @@ object AppUpdateManager {
         } catch (_: Exception) { "1.0" }
 
         checkGitHubForUpdates(currentVersionName) { updateInfo ->
-            com.example.pantry.notifications.NotificationHelper.showUpdateAvailableNotification(context, updateInfo)
+            val lastNotifiedVersion = UserPreferences.getLastNotifiedUpdateVersion(context)
+            if (lastNotifiedVersion != updateInfo.latestVersionName) {
+                UserPreferences.saveLastNotifiedUpdateVersion(context, updateInfo.latestVersionName)
+                com.example.pantry.notifications.NotificationHelper.showUpdateAvailableNotification(context, updateInfo)
+            }
             onUpdateAvailable(updateInfo)
         }
 
