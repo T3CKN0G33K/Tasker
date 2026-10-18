@@ -83,3 +83,31 @@ data class TicketMessage(
     var text: String = "",
     @ServerTimestamp var timestamp: Date? = null
 )
+
+@IgnoreExtraProperties
+data class BoardNote(
+    var id: String = "",
+    var category: String = "Maintenance & Emergency",
+    var title: String = "",
+    var content: String = "",
+    var emoji: String = "📌",
+    var authorName: String = "Household Member",
+    var dateLabel: String = "Today"
+)
+
+@IgnoreExtraProperties
+data class BudgetCycleData(
+    var cycleId: String = "2026-10",
+    var allowance: Double = 1250.00,
+    var bills: List<BillItem> = emptyList()
+)
+
+@IgnoreExtraProperties
+data class UserProfileData(
+    var uid: String = "",
+    var displayName: String = "User",
+    var email: String = "",
+    var role: String = "Member",
+    var householdId: String = "",
+    var photoUrl: String? = null
+)

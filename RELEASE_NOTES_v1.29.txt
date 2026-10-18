@@ -1,0 +1,76 @@
+===================================================================
+TASKER / PANTRY TRACKER - RELEASE NOTES (v1.29 - Build 30)
+===================================================================
+Release Date: October 17, 2026
+APK Location: app/build/outputs/apk/debug/app-debug.apk
+Version Name: 1.29
+Version Code: 30
+
+-------------------------------------------------------------------
+HIGHLIGHTS & MAJOR CHANGES (v1.28 -> v1.29)
+-------------------------------------------------------------------
+
+1. FULL VECTOR GLASS UI REDESIGN (ALL 5 MAIN TABS):
+   • Complete visual overhaul of Pantry, Calendar, Budget, House Board, and Settings screens.
+   • Unified container surfaces, glass cards, and pill badges matching SVG design system tokens.
+   • Single primary floating action button (+) anchored at bottom = 96.dp, end = 24.dp across tabs.
+   • Floating 5-tab vector navigation bar with active tab glow indicator.
+
+2. REAL-TIME CLOUD FIRESTORE SYNCHRONIZATION:
+   • Live, atomic snapshot listeners for all 5 screens.
+   • Zero demo seeding loops: rendering strictly live Firestore records (`households/{householdId}/...`).
+   • Instant multi-device sync for pantry inventory stock, calendar events, household bills, and board notices.
+
+3. DYNAMIC SEASONAL HOLIDAY THEME ENGINE:
+   • Centralized theme token system (`AppThemeColors`, `LocalAppColors`, `TaskerTheme`).
+   • Supported seasonal palettes:
+     - Default Solid Obsidian (Midnight canvas `#090D16`, `#0F172A` cards, `#38BDF8` cyan borders)
+     - Spooky Halloween (Midnight purple canvas `#0F0716`, `#1E112A` cards, pumpkin orange `#F97316` borders & FAB)
+     - Harvest Thanksgiving (Espresso canvas `#140D07`, `#24160C` cards, burnt amber `#D97706` borders & FAB)
+     - Festive Christmas (Evergreen canvas `#06140D`, `#0E2418` cards, crimson red `#DC2626` borders & FAB)
+     - New Year Frost & Gold (Arctic blue canvas `#080B14`, `#10172A` cards, champagne gold `#EAB308` borders & FAB)
+   • Automatic Calendar Theme Scheduler (`ThemeScheduleHelper.kt`):
+     - October: Halloween
+     - November 15-30: Thanksgiving
+     - December 1-26: Christmas
+     - December 27 - January 7: New Year / Winter
+   • Remote override support via Cloud Firestore (`households/{householdId}/config/theme`).
+
+4. PANTRY SCREEN REBUILD:
+   • Live inventory list with fractional stepper controls (±0.25 on pet bags/boxes).
+   • Restock cost calculator card.
+   • Category filter chips row ("All", "Household", "Pet Care", "Cleaning", "Dry Goods").
+   • Add/Edit item sheets with barcode scanner support.
+
+5. CALENDAR & SCHEDULE REBUILD:
+   • Segmented "Week" vs "Month" view switcher.
+   • Interactive 7-column month grid & horizontal 7-day week strip.
+   • Scope-aware agenda filtering (filters events by selected week/month scope).
+   • Upcoming Event Hero Card displaying next scheduled shift, restock run, or appointment.
+   • Alarm Scheduler integration (`CalendarAlarmScheduler.kt`) for exact push reminders.
+
+6. BUDGET & LEDGER REBUILD:
+   • Hero Allowance Card with dynamic balance display, smooth progress gauge, and paid/unpaid stat splits.
+   • Interactive Household Bills checklist (Rent, Disney Plus, Xfinity, Google ONE, Safety Insurance, National Grid, Unitil, AT&T, etc.).
+   • Toggling bill payment status updates remaining allowance live in Cloud Firestore.
+   • Chronological due-date auto-sorting (`parseDueDateDayNumber` from `Due 1st` down).
+   • Monthly Cycle Picker Sheet (`budget_cycle_picker.svg`) with read-only past monthly archives.
+
+7. HOUSE BOARD REBUILD:
+   • Wi-Fi Hero Card (`Apartment_5G_Home`) with 10-tap gesture on 📡 router icon to trigger Admin PIN security unlock (`2026`).
+   • One-tap "Copy PW" button to copy network credentials to clipboard.
+   • Tinted Notice Cards (`HouseNoteCard.kt`) with top-to-bottom vertical gradients:
+     - Amber: Maintenance & Emergency
+     - Cyan: Pet Routine & Care
+     - Emerald: Deliveries & Packages
+     - Violet: Recurring Upkeep
+   • Add Notice sheet (`AddNoteDialog.kt`) with 5 color theme swatches, category pills, live preview, and pin-to-top toggle.
+
+8. SETTINGS & PROFILE EDIT REBUILD:
+   • User Profile Header Card with role badges (OWNER, ADMIN, MEMBER) and online indicator.
+   • Full-screen Profile Edit page (`ProfileEditScreen.kt`) with Photo Picker (`ActivityResultContracts.PickVisualMedia()`) and Active Sync Devices list.
+   • Real-time Live Household Members dialog (`ManageHouseholdDialog`) displaying all registered members from Cloud Firestore (`users` where `householdId == currentUser.householdId`).
+   • Dedicated full-screen About page (`AboutVersionScreen.kt`) with diagnostic build copy tool and legal compliance links.
+   • Google Drive OTA Update Prompt listener (`households/{householdId}/config/updates`).
+
+===================================================================

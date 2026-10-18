@@ -8,17 +8,20 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -31,10 +34,7 @@ import com.example.tasker.R
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.catalog.components.LiquidBottomTab
-import com.kyant.backdrop.catalog.components.LiquidBottomTabs
+
 
 data class DashboardTabItem(
     val id: Int,
@@ -46,7 +46,7 @@ val dashboardTabItems = listOf(
     DashboardTabItem(0, "Pantry", Icons.Default.List),
     DashboardTabItem(1, "Calendar", Icons.Default.CalendarToday),
     DashboardTabItem(2, "Budget", Icons.Default.AccountBalance),
-    DashboardTabItem(3, "Shifts", Icons.Default.Schedule),
+    DashboardTabItem(3, "Board", Icons.Default.Dashboard),
     DashboardTabItem(4, "Settings", Icons.Default.Settings)
 )
 
@@ -82,11 +82,10 @@ fun DashboardScreen(
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var pantryItems by remember { mutableStateOf<List<PantryItem>>(emptyList()) }
-    var ledgerEntries by remember { mutableStateOf<List<LedgerEntry>>(emptyList()) }
-    var monthlyBills by remember { mutableStateOf<List<BillItem>>(emptyList()) }
+    var showAboutVersionScreen by remember { mutableStateOf(false) }
+    var showProfileEditScreen by remember { mutableStateOf(false) }
 
     val db = Firebase.firestore
-    val backdrop = rememberLayerBackdrop()
 
     // Real-time Firestore Sync at Dashboard level
     LaunchedEffect(currentUser.householdId) {
@@ -140,105 +139,18 @@ fun DashboardScreen(
                     }
                 }
 
-            // 2. Bi-Weekly Bills Sync (Guarded by persistent hasSeededBankLedger flag)
-            db.collection("households").document(householdId).collection("bills")
-                .addSnapshotListener { snapshot, _ ->
-                    if (snapshot != null) {
-                        if (snapshot.isEmpty && !UserPreferences.hasSeededBankLedger(context)) {
-                            UserPreferences.setBankLedgerSeeded(context, true)
-                            val batch = db.batch()
-                            defaultBillsList.forEach { bill ->
-                                val docRef = db.collection("households").document(householdId)
-                                    .collection("bills").document(bill.id)
-                                batch.set(
-                                    docRef,
-                                    hashMapOf(
-                                        "id" to bill.id,
-                                        "name" to bill.name,
-                                        "amount" to bill.amount,
-                                        "dueDate" to bill.dueDate,
-                                        "paidPeriodIds" to bill.paidPeriodIds
-                                    ),
-                                    SetOptions.merge()
-                                )
-                            }
-                            batch.commit()
-                        } else {
-                            val items = snapshot.documents.mapNotNull { doc ->
-                                @Suppress("UNCHECKED_CAST")
-                                val paidIds = (doc.get("paidPeriodIds") as? List<String>) ?: emptyList()
-                                BillItem(
-                                    id = doc.id,
-                                    name = doc.getString("name") ?: "Bill",
-                                    amount = doc.getDouble("amount") ?: 0.0,
-                                    dueDate = doc.getString("dueDate") ?: "Due 1st",
-                                    paidPeriodIds = paidIds
-                                )
-                            }
-                            monthlyBills = items
-                        }
-                    }
-                }
 
-            // 3. Bank Ledger Transactions Sync (Guarded by persistent hasSeededBankLedger flag)
-            db.collection("households").document(householdId).collection("transactions")
-                .addSnapshotListener { snapshot, _ ->
-                    if (snapshot != null) {
-                        if (snapshot.isEmpty && !UserPreferences.hasSeededBankLedger(context)) {
-                            UserPreferences.setBankLedgerSeeded(context, true)
-                            val batch = db.batch()
-                            defaultLedgerEntries.forEach { tx ->
-                                val docRef = db.collection("households").document(householdId)
-                                    .collection("transactions").document(tx.id)
-                                batch.set(
-                                    docRef,
-                                    hashMapOf(
-                                        "id" to tx.id,
-                                        "title" to tx.title,
-                                        "amount" to tx.amount,
-                                        "type" to tx.type.name,
-                                        "timestamp" to tx.timestamp,
-                                        "category" to tx.category
-                                    ),
-                                    SetOptions.merge()
-                                )
-                            }
-                            batch.commit()
-                        } else {
-                            val items = snapshot.documents.mapNotNull { doc ->
-                                val typeStr = doc.getString("type") ?: "EXPENSE"
-                                val type = try { TransactionType.valueOf(typeStr) } catch (_: Exception) { TransactionType.EXPENSE }
-                                LedgerEntry(
-                                    id = doc.id,
-                                    title = doc.getString("title") ?: "Transaction",
-                                    amount = doc.getDouble("amount") ?: 0.0,
-                                    type = type,
-                                    timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis(),
-                                    category = doc.getString("category") ?: "General"
-                                )
-                            }
-                            ledgerEntries = items
-                        }
-                    }
-                }
+
+
         }
     }
 
     // Outer root container
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF090D16))
     ) {
-        // LAYER 1: ONLY the static wallpaper/background image is captured into backdrop:
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .layerBackdrop(backdrop)
-        ) {
-            AppleLuminousMeshBackground(
-                themePreference = currentUser.themePreference,
-                isDarkMode = isDarkMode
-            )
-        }
 
         // LAYER 2: The interactive UI content sits OUTSIDE layerBackdrop:
         Box(
@@ -259,7 +171,6 @@ fun DashboardScreen(
                         when (targetTab) {
                             0 -> PantryScreen(
                                 items = pantryItems,
-                                backdrop = backdrop,
                                 isDarkMode = isDarkMode,
                                 themePreference = currentUser.themePreference,
                                 onItemUpdate = { updatedItem ->
@@ -309,30 +220,23 @@ fun DashboardScreen(
                             )
                             1 -> CalendarScreen(
                                 currentUser = currentUser,
-                                backdrop = backdrop,
                                 isDarkMode = isDarkMode
                             )
                             2 -> BudgetScreen(
                                 currentUser = currentUser,
-                                backdrop = backdrop,
-                                isDarkMode = isDarkMode,
-                                ledgerEntries = ledgerEntries,
-                                bills = monthlyBills,
-                                onUpdateLedger = { updated -> ledgerEntries = updated },
-                                onUpdateBills = { updated -> monthlyBills = updated }
+                                isDarkMode = isDarkMode
                             )
-                            3 -> ShiftsScreen(
+                            3 -> HouseBoardScreen(
                                 currentUser = currentUser,
-                                backdrop = backdrop,
-                                isDarkMode = isDarkMode,
-                                onProfileUpdated = onProfileUpdated
+                                isDarkMode = isDarkMode
                             )
                             4 -> SettingsScreen(
                                 currentUser = currentUser,
                                 isDarkMode = isDarkMode,
-                                backdrop = backdrop,
                                 onToggleDarkMode = onToggleDarkMode,
                                 onProfileUpdated = onProfileUpdated,
+                                onOpenProfileEdit = { showProfileEditScreen = true },
+                                onOpenAbout = { showAboutVersionScreen = true },
                                 onSignOut = onSignOut
                             )
                         }
@@ -341,40 +245,75 @@ fun DashboardScreen(
             }
         }
 
-        // LAYER 2: The official Kyant Liquid Glass LiquidBottomTabs (Floating Capsule Frame)
-        LiquidBottomTabs(
-            selectedTabIndex = { selectedTab },
-            onTabSelected = { newIndex -> selectedTab = newIndex },
-            backdrop = backdrop,
-            tabsCount = dashboardTabItems.size,
+        // Full-screen AboutVersionScreen overlay
+        if (showAboutVersionScreen) {
+            AboutVersionScreen(
+                onBack = { showAboutVersionScreen = false }
+            )
+        }
+
+        // Full-screen ProfileEditScreen overlay
+        if (showProfileEditScreen) {
+            ProfileEditScreen(
+                initialDisplayName = currentUser.name.ifBlank { "Bartont4432" },
+                initialRole = if (currentUser.role == Role.OWNER) "Household Owner" else if (currentUser.role == Role.ADMIN || currentUser.canManageHousehold) "Household Manager (Admin)" else "Member",
+                initialEmail = currentUser.email.ifBlank { "bartont4432@gmail.com" },
+                initialHouseholdGroup = "Main Household",
+                activeSyncDevices = "Galaxy Z Fold, Desktop Server, Tablet",
+                onBack = { showProfileEditScreen = false },
+                onSaveChanges = { newName ->
+                    val updated = currentUser.copy(name = newName)
+                    onProfileUpdated(updated)
+                    showProfileEditScreen = false
+                }
+            )
+        }
+
+        // Floating Solid Vector Bottom Bar
+        val appColors = com.example.pantry.ui.theme.LocalAppColors.current
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp, start = 20.dp, end = 20.dp)
                 .fillMaxWidth()
+                .height(64.dp)
+                .svgCardContainer(
+                    cornerRadius = 32.dp,
+                    backgroundColor = appColors.cardSurface.copy(alpha = 0.95f),
+                    borderColor = appColors.cardBorder
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            dashboardTabItems.forEach { tab ->
-                val isSelected = selectedTab == tab.id
-                LiquidBottomTab(
-                    onClick = { selectedTab = tab.id }
-                ) {
-                    Icon(
-                        imageVector = tab.icon,
-                        contentDescription = tab.title,
-                        tint = if (isSelected) {
-                            if (currentUser.themePreference.equals("PURPLE", ignoreCase = true)) Color(0xFFC084FC) else Color.White
-                        } else {
-                            Color.White.copy(alpha = 0.55f)
-                        },
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = tab.title,
-                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.55f),
-                        fontSize = 10.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                dashboardTabItems.forEach { tab ->
+                    val isSelected = selectedTab == tab.id
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable { selectedTab = tab.id }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = tab.title,
+                            tint = if (isSelected) appColors.primaryAccent else appColors.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = tab.title,
+                            color = if (isSelected) appColors.primaryAccent else appColors.textSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
                 }
             }
         }

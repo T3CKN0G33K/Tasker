@@ -30,16 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.Capsule
+
 import androidx.compose.ui.unit.sp
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
@@ -101,32 +92,15 @@ fun GlassStepperButton(
 fun GlassHeroButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    backdrop: Backdrop? = null,
     enabled: Boolean = true,
     isDarkMode: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
-    val currentBackdrop = backdrop ?: rememberLayerBackdrop()
-    val isLightTheme = !isDarkMode
-    val containerColor = if (isLightTheme) Color.White.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.12f)
-
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp)
-            .drawBackdrop(
-                backdrop = currentBackdrop,
-                shape = { Capsule() },
-                effects = {
-                    vibrancy()
-                    blur(8.dp.toPx())
-                    lens(20.dp.toPx(), 36.dp.toPx(), chromaticAberration = true)
-                },
-                highlight = { Highlight.Default.copy(alpha = 0.50f) },
-                shadow = { Shadow(alpha = 0.30f, radius = 12.dp) },
-                innerShadow = { InnerShadow(radius = 8.dp, alpha = 0.20f) },
-                onDrawSurface = { drawRect(containerColor) }
-            )
+            .svgCardContainer(cornerRadius = 16.dp)
             .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },

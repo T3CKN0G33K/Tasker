@@ -48,6 +48,10 @@ import kotlinx.coroutines.launch
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import com.example.pantry.ui.theme.DefaultObsidianColors
+import com.example.pantry.ui.theme.HalloweenColors
+import com.example.pantry.ui.theme.LocalAppColors
+import com.example.pantry.ui.theme.TaskerTheme
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -60,6 +64,7 @@ enum class AppState { LOADING, AUTH, ONBOARDING, DASHBOARD }
 @Composable
 fun AppRoot() {
     val context = LocalContext.current
+
     var currentAppState by remember { mutableStateOf(AppState.LOADING) }
     var activeUser by remember { mutableStateOf<UserProfile?>(null) }
     var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
@@ -188,80 +193,63 @@ fun AppRoot() {
         }
     }
 
-    val ambientMeshGradient = Brush.linearGradient(
-        colors = listOf(
-            Color(0xFF0B132B),
-            Color(0xFF083344).copy(alpha = 0.85f),
-            Color(0xFF0F172A),
-            Color(0xFF06B6D4).copy(alpha = 0.25f)
-        )
-    )
-
-    val rootBgModifier = if (isDarkMode) {
-        Modifier.background(brush = ambientMeshGradient)
-    } else {
-        Modifier.background(Color(0xFFF2F2F7))
-    }
-
-    Box(modifier = Modifier.fillMaxSize().then(rootBgModifier)) {
-        AnimatedContent(
-            targetState = currentAppState,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
-            },
-            label = "RootRouting"
-        ) { state ->
-            when (state) {
-                AppState.LOADING -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            CircularProgressIndicator(color = Color(0xFF007AFF))
-                            Text("Connecting to Household...", color = Color.Gray, fontSize = 14.sp)
-                        }
+    AnimatedContent(
+        targetState = currentAppState,
+        transitionSpec = {
+            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+        },
+        label = "RootRouting"
+    ) { state ->
+        when (state) {
+            AppState.LOADING -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFF007AFF))
+                        Text("Connecting to Household...", color = Color.Gray, fontSize = 14.sp)
                     }
                 }
-                AppState.AUTH -> AuthScreen(
-                    onAuthRouting = { profile, targetState ->
-                        activeUser = profile
-                        currentAppState = targetState
-                    }
-                )
-                AppState.ONBOARDING -> OnboardingScreen(
-                    user = activeUser ?: UserProfile("", "", "", Role.OWNER, null, false),
-                    onHouseholdJoined = { updatedUser ->
-                        activeUser = updatedUser
-                        UserPreferences.saveUser(context, updatedUser)
-                        currentAppState = AppState.DASHBOARD
-                    },
-                    onSignOut = {
-                        auth.signOut()
-                        UserPreferences.clear(context)
-                        activeUser = null
-                        currentAppState = AppState.AUTH
-                    }
-                )
-                AppState.DASHBOARD -> DashboardScreen(
-                    currentUser = activeUser ?: UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
-                    isDarkMode = isDarkMode,
-                    onToggleDarkMode = { newDark ->
-                        isDarkMode = newDark
-                        UserPreferences.saveDarkMode(context, newDark)
-                    },
-                    onProfileUpdated = { updatedUser ->
-                        activeUser = updatedUser
-                        UserPreferences.saveUser(context, updatedUser)
-                    },
-                    onSignOut = {
-                        auth.signOut()
-                        UserPreferences.clear(context)
-                        activeUser = null
-                        currentAppState = AppState.AUTH
-                    }
-                )
             }
+            AppState.AUTH -> AuthScreen(
+                onAuthRouting = { profile, targetState ->
+                    activeUser = profile
+                    currentAppState = targetState
+                }
+            )
+            AppState.ONBOARDING -> OnboardingScreen(
+                user = activeUser ?: UserProfile("", "", "", Role.OWNER, null, false),
+                onHouseholdJoined = { updatedUser ->
+                    activeUser = updatedUser
+                    UserPreferences.saveUser(context, updatedUser)
+                    currentAppState = AppState.DASHBOARD
+                },
+                onSignOut = {
+                    auth.signOut()
+                    UserPreferences.clear(context)
+                    activeUser = null
+                    currentAppState = AppState.AUTH
+                }
+            )
+            AppState.DASHBOARD -> DashboardScreen(
+                currentUser = activeUser ?: UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
+                isDarkMode = isDarkMode,
+                onToggleDarkMode = { newDark ->
+                    isDarkMode = newDark
+                    UserPreferences.saveDarkMode(context, newDark)
+                },
+                onProfileUpdated = { updatedUser ->
+                    activeUser = updatedUser
+                    UserPreferences.saveUser(context, updatedUser)
+                },
+                onSignOut = {
+                    auth.signOut()
+                    UserPreferences.clear(context)
+                    activeUser = null
+                    currentAppState = AppState.AUTH
+                }
+            )
         }
     }
 
@@ -566,185 +554,31 @@ fun AppUpdateDialog(
     )
 }
 
+enum class AuthNavStage { WELCOME, LOGIN, SIGN_UP }
+
 @Composable
 fun AuthScreen(onAuthRouting: (UserProfile, AppState) -> Unit) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var isSignUp by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
+    var navStage by remember { mutableStateOf(AuthNavStage.WELCOME) }
 
-    val context = LocalContext.current
-    val autofillManager = remember { context.getSystemService(AutofillManager::class.java) }
-    val auth = Firebase.auth
-    val db = Firebase.firestore
-
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = if (isSignUp) "Create Account" else "Welcome Back", 
-            color = Color.White, 
-            fontSize = 34.sp, 
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Enter your email and password to continue.", 
-            color = Color.Gray, 
-            textAlign = TextAlign.Center
-        )
-        
-        Spacer(modifier = Modifier.height(48.dp))
-        
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Email", color = Color.Gray) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentType = ContentType.EmailAddress },
-            shape = RoundedCornerShape(14.dp),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Email,
-                imeAction = ImeAction.Next
-            ),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color(0xFF1C1C1E),
-                unfocusedContainerColor = Color(0xFF1C1C1E),
-                focusedBorderColor = Color(0xFF007AFF),
-                unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
+    AnimatedContent(
+        targetState = navStage,
+        transitionSpec = {
+            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+        },
+        label = "AuthNavTransition"
+    ) { stage ->
+        when (stage) {
+            AuthNavStage.WELCOME -> WelcomeScreen(
+                onNavigateToSignUp = { navStage = AuthNavStage.SIGN_UP },
+                onNavigateToLogin = { navStage = AuthNavStage.LOGIN }
             )
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password", color = Color.Gray) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .semantics { contentType = ContentType.Password },
-            shape = RoundedCornerShape(14.dp),
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Done
-            ),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color(0xFF1C1C1E),
-                unfocusedContainerColor = Color(0xFF1C1C1E),
-                focusedBorderColor = Color(0xFF007AFF),
-                unfocusedBorderColor = Color.Transparent,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
+            AuthNavStage.LOGIN -> LoginScreen(
+                onBack = { navStage = AuthNavStage.WELCOME },
+                onAuthRouting = onAuthRouting
             )
-        )
-        
-        Spacer(modifier = Modifier.height(32.dp))
-        
-        Button(
-            onClick = { 
-                val trimmedEmail = email.trim()
-                if (trimmedEmail.isBlank() || !trimmedEmail.contains("@")) {
-                    Toast.makeText(context, "Please enter a valid email address.", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-                if (password.length < 6) {
-                    Toast.makeText(context, "Password must be at least 6 characters.", Toast.LENGTH_SHORT).show()
-                    return@Button
-                }
-
-                isLoading = true
-                if (isSignUp) {
-                    auth.createUserWithEmailAndPassword(trimmedEmail, password)
-                        .addOnCompleteListener { task ->
-                            if (task.isSuccessful) {
-                                autofillManager?.commit()
-                                val user = task.result?.user
-                                val uid = user?.uid ?: UUID.randomUUID().toString()
-                                val name = trimmedEmail.substringBefore("@")
-                                val profile = UserProfile(uid, name, trimmedEmail, Role.OWNER, null, false, "DEFAULT")
-
-                                // Create user document in Firestore
-                                val userMap = hashMapOf(
-                                    "uid" to uid,
-                                    "name" to name,
-                                    "email" to trimmedEmail,
-                                    "role" to "OWNER",
-                                    "householdId" to null,
-                                    "canManageHousehold" to false,
-                                    "themePreference" to "DEFAULT"
-                                )
-                                db.collection("users").document(uid).set(userMap)
-                                    .addOnSuccessListener {
-                                        isLoading = false
-                                        UserPreferences.saveUser(context, profile)
-                                        onAuthRouting(profile, AppState.ONBOARDING)
-                                    }
-                                    .addOnFailureListener {
-                                        isLoading = false
-                                        UserPreferences.saveUser(context, profile)
-                                        onAuthRouting(profile, AppState.ONBOARDING)
-                                    }
-                            } else {
-                                autofillManager?.cancel()
-                                isLoading = false
-                                Toast.makeText(context, "Error: ${task.exception?.localizedMessage}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                } else {
-                    auth.signInWithEmailAndPassword(trimmedEmail, password)
-                        .addOnCompleteListener { task ->
-                            if (task.isSuccessful) {
-                                autofillManager?.commit()
-                                val firebaseUser = task.result?.user
-                                if (firebaseUser != null) {
-                                    handleUserAuthSuccess(
-                                        uid = firebaseUser.uid,
-                                        email = trimmedEmail,
-                                        db = db,
-                                        context = context
-                                    ) { profile, targetState ->
-                                        isLoading = false
-                                        onAuthRouting(profile, targetState)
-                                    }
-                                } else {
-                                    isLoading = false
-                                    Toast.makeText(context, "Login failed: User record null.", Toast.LENGTH_LONG).show()
-                                }
-                            } else {
-                                autofillManager?.cancel()
-                                isLoading = false
-                                Toast.makeText(context, "Error: ${task.exception?.localizedMessage}", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                }
-            },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
-            enabled = !isLoading
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-            } else {
-                Text(if (isSignUp) "Sign Up" else "Sign In", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        TextButton(onClick = { isSignUp = !isSignUp }, enabled = !isLoading) {
-            Text(
-                text = if (isSignUp) "Already have an account? Sign In" else "Don't have an account? Sign Up",
-                color = Color(0xFF007AFF)
+            AuthNavStage.SIGN_UP -> SignUpScreen(
+                onBack = { navStage = AuthNavStage.WELCOME },
+                onAuthRouting = onAuthRouting
             )
         }
     }

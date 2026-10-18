@@ -1,70 +1,49 @@
 package com.example.pantry.ui
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Event
-import androidx.compose.material.icons.filled.MedicalServices
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.example.pantry.notifications.CalendarAlarmScheduler
+import com.example.pantry.ui.theme.themedCard
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.colorControls
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.Capsule
 import java.text.SimpleDateFormat
 import java.util.Calendar
-import java.util.Date
 import java.util.Locale
-import java.util.TimeZone
 import java.util.UUID
+
+fun parsePunchTimeSafely(timeStr: String): String = timeStr.trim()
 
 fun parseEventDateTimeToEpoch(dateStr: String, timeStr: String): Long {
     return runCatching {
@@ -78,46 +57,41 @@ fun parseEventDateTimeToEpoch(dateStr: String, timeStr: String): Long {
 data class CalendarEvent(
     val id: String = "",
     val title: String = "",
-    val date: String = "", // Format YYYY-MM-DD e.g. "2026-09-24"
+    val date: String = "", // Format YYYY-MM-DD e.g. "2026-10-16"
     val time: String = "10:00 AM",
     val notes: String = "",
     val category: String = "Appointment"
 )
 
-val sampleCalendarEvents = listOf(
-    CalendarEvent("e1", "Dentist Appointment", "2026-09-24", "10:00 AM", "Checkup & Cleaning", "Medical"),
-    CalendarEvent("e2", "Grocery Restock Day", "2026-09-24", "04:30 PM", "Buy cat food & paper towels", "Household"),
-    CalendarEvent("e3", "Car Maintenance", "2026-09-28", "09:00 AM", "Oil Change & Tire Rotation", "Personal")
-)
+fun getCategoryAccentColor(category: String): Color {
+    return when (category.lowercase()) {
+        "shift", "shifts", "restock" -> Color(0xFFFBBF24)
+        "appointment", "medical" -> Color(0xFF38BDF8)
+        "household", "maintenance", "personal", "diy", "upkeep", "chore" -> Color(0xFF10B981)
+        else -> Color(0xFF38BDF8)
+    }
+}
 
 @Composable
 fun CalendarScreen(
     currentUser: UserProfile = UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
-    backdrop: Backdrop? = null,
     isDarkMode: Boolean = true,
     themePreference: String = "DEFAULT",
     modifier: Modifier = Modifier
 ) {
-    val currentBackdrop = backdrop ?: rememberLayerBackdrop()
     val context = LocalContext.current
     val db = Firebase.firestore
 
     var events by remember { mutableStateOf<List<CalendarEvent>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var showAddEventDialog by remember { mutableStateOf(false) }
-    var calendarViewMode by remember { mutableStateOf("WEEK") } // "WEEK" vs "MONTH"
+    var calendarViewMode by remember { mutableStateOf("MONTH") } // "WEEK" vs "MONTH"
 
     // Calendar Date Calculation State
     val calendar = remember { Calendar.getInstance() }
     var currentYear by remember { mutableIntStateOf(calendar.get(Calendar.YEAR)) }
     var currentMonth by remember { mutableIntStateOf(calendar.get(Calendar.MONTH)) } // 0..11
     var selectedDay by remember { mutableIntStateOf(calendar.get(Calendar.DAY_OF_MONTH)) }
-
-    val activeAccentColor = if (themePreference.equals("PURPLE", ignoreCase = true)) {
-        Color(0xFFC084FC)
-    } else {
-        Color(0xFF007AFF)
-    }
 
     val monthFormat = remember { SimpleDateFormat("MMMM yyyy", Locale.US) }
     val monthTitle = remember(currentYear, currentMonth) {
@@ -133,44 +107,8 @@ fun CalendarScreen(
         String.format(Locale.US, "%04d-%02d-%02d", currentYear, currentMonth + 1, selectedDay)
     }
 
-    // Real-time Firestore Sync for Calendar Events
-    LaunchedEffect(currentUser.householdId) {
-        currentUser.householdId?.let { hid ->
-            db.collection("households").document(hid).collection("events")
-                .addSnapshotListener { snapshot, _ ->
-                    isLoading = false
-                    if (snapshot != null) {
-                        val items = snapshot.documents.mapNotNull { doc ->
-                            CalendarEvent(
-                                id = doc.id,
-                                title = doc.getString("title") ?: "Event",
-                                date = doc.getString("date") ?: selectedDateString,
-                                time = doc.getString("time") ?: "10:00 AM",
-                                notes = doc.getString("notes") ?: "",
-                                category = doc.getString("category") ?: "Appointment"
-                            )
-                        }
-                        events = items
-                    } else if (events.isEmpty()) {
-                        events = sampleCalendarEvents
-                    }
-                }
-        } ?: run {
-            isLoading = false
-            if (events.isEmpty()) events = sampleCalendarEvents
-        }
-    }
-
-    val textMain = if (isDarkMode) Color.White else Color.Black
-    val textSub = if (isDarkMode) Color.LightGray else Color(0xFF6C6C70)
-
-    val selectedDayEvents = remember(events, selectedDateString) {
-        events.filter { it.date == selectedDateString }
-    }
-
-    // Upcoming Focus Event Calculation
-    val upcomingEvent = remember(events, selectedDateString) {
-        events.filter { it.date >= selectedDateString }.minByOrNull { it.date + it.time }
+    val monthStartString = remember(currentYear, currentMonth) {
+        String.format(Locale.US, "%04d-%02d-01", currentYear, currentMonth + 1)
     }
 
     val daysInMonth = remember(currentYear, currentMonth) {
@@ -182,6 +120,10 @@ fun CalendarScreen(
         cal.getActualMaximum(Calendar.DAY_OF_MONTH)
     }
 
+    val monthEndString = remember(currentYear, currentMonth, daysInMonth) {
+        String.format(Locale.US, "%04d-%02d-%02d", currentYear, currentMonth + 1, daysInMonth)
+    }
+
     val firstDayOfWeekOffset = remember(currentYear, currentMonth) {
         val cal = Calendar.getInstance().apply {
             set(Calendar.YEAR, currentYear)
@@ -191,7 +133,7 @@ fun CalendarScreen(
         cal.get(Calendar.DAY_OF_WEEK) - 1 // 0 for Sunday
     }
 
-    // Week Ribbon Days Calculation
+    // Week Strip Calculation
     val weekDays = remember(currentYear, currentMonth, selectedDay) {
         val cal = Calendar.getInstance().apply {
             set(Calendar.YEAR, currentYear)
@@ -212,10 +154,61 @@ fun CalendarScreen(
         days
     }
 
+    val weekStartString = remember(weekDays) {
+        val (y, m, d) = weekDays.first()
+        String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d)
+    }
+
+    val weekEndString = remember(weekDays) {
+        val (y, m, d) = weekDays.last()
+        String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d)
+    }
+
+    // Real-time Firestore Sync for Calendar Events (Purged Demo Fallbacks)
+    LaunchedEffect(currentUser.householdId) {
+        currentUser.householdId?.let { hid ->
+            db.collection("households").document(hid).collection("events")
+                .addSnapshotListener { snapshot, _ ->
+                    isLoading = false
+                    if (snapshot != null) {
+                        val items = snapshot.documents.mapNotNull { doc ->
+                            CalendarEvent(
+                                id = doc.id,
+                                title = doc.getString("title") ?: "Event",
+                                date = doc.getString("date") ?: selectedDateString,
+                                time = doc.getString("time") ?: "10:00 AM",
+                                notes = doc.getString("notes") ?: "",
+                                category = doc.getString("category") ?: "Appointment"
+                            )
+                        }
+                        events = items
+                    }
+                }
+        } ?: run {
+            isLoading = false
+        }
+    }
+
+    // Scope-aware Event Filtering Logic
+    val displayedEvents = remember(events, selectedDateString, calendarViewMode, weekStartString, weekEndString, monthStartString, monthEndString) {
+        when (calendarViewMode) {
+            "WEEK" -> events.filter { it.date in weekStartString..weekEndString }
+            "MONTH" -> events.filter { it.date in monthStartString..monthEndString }
+            else -> events.filter { it.date == selectedDateString }
+        }.sortedWith(compareBy({ it.date }, { parsePunchTimeSafely(it.time) }))
+    }
+
+    // Upcoming Event Hero Card Calculation
+    val upcomingEvent = remember(events, selectedDateString) {
+        events.filter { it.date >= selectedDateString }
+            .minByOrNull { it.date + " " + it.time }
+    }
+
     Box(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
+            .fillMaxSize()
+            .background(com.example.pantry.ui.theme.LocalAppColors.current.background)
     ) {
-        // 1. Scrollable Calendar Content
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -224,44 +217,86 @@ fun CalendarScreen(
                 start = 20.dp,
                 end = 20.dp,
                 top = 16.dp,
-                bottom = 140.dp // Clearance for floating action buttons & taskbar
+                bottom = 140.dp // Clearance for floating taskbar & FAB
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header
+            // 1. Top Bar: Header Title & View Toggle Segmented Pill
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 4.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Calendar",
-                        color = textMain,
-                        fontSize = 34.sp,
+                        text = "Schedule",
+                        color = Color.White,
+                        fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.5).sp
                     )
+
+                    // Segmented Capsule Pill Toggle
+                    Row(
+                        modifier = Modifier
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color(0xFF1E293B))
+                            .border(1.dp, Color(0xFF334155), RoundedCornerShape(18.dp))
+                            .padding(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (calendarViewMode == "WEEK") Color(0xFF007AFF) else Color.Transparent)
+                                .clickable { calendarViewMode = "WEEK" }
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Week",
+                                color = if (calendarViewMode == "WEEK") Color.White else Color(0xFF94A3B8),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (calendarViewMode == "MONTH") Color(0xFF007AFF) else Color.Transparent)
+                                .clickable { calendarViewMode = "MONTH" }
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Month",
+                                color = if (calendarViewMode == "MONTH") Color.White else Color(0xFF94A3B8),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
 
-            // Month Overview Glass Card
+            // 2. Main Calendar Container Card
             item {
-                MonthOverviewGlassCard(
-                    backdrop = currentBackdrop,
+                MainCalendarCard(
                     currentYear = currentYear,
                     currentMonth = currentMonth,
                     selectedDay = selectedDay,
                     monthTitle = monthTitle,
                     calendarViewMode = calendarViewMode,
-                    weekDays = weekDays,
                     daysInMonth = daysInMonth,
                     firstDayOfWeekOffset = firstDayOfWeekOffset,
+                    weekDays = weekDays,
                     events = events,
-                    activeAccentColor = activeAccentColor,
-                    textMain = textMain,
-                    textSub = textSub,
                     onMonthPrev = {
                         if (currentMonth == 0) {
                             currentMonth = 11
@@ -280,9 +315,6 @@ fun CalendarScreen(
                         }
                         selectedDay = 1
                     },
-                    onToggleViewMode = {
-                        calendarViewMode = if (calendarViewMode == "WEEK") "MONTH" else "WEEK"
-                    },
                     onSelectDay = { y, m, d ->
                         currentYear = y
                         currentMonth = m
@@ -291,20 +323,14 @@ fun CalendarScreen(
                 )
             }
 
-            // Upcoming Focus Hero Card (if present)
+            // 3. Upcoming Event Hero Card
             upcomingEvent?.let { focusEvent ->
                 item {
-                    UpcomingHeroGlassCard(
-                        focusEvent = focusEvent,
-                        backdrop = currentBackdrop,
-                        activeAccentColor = activeAccentColor,
-                        textMain = textMain,
-                        textSub = textSub
-                    )
+                    UpcomingHeroCard(focusEvent = focusEvent)
                 }
             }
 
-            // Events List Header
+            // 4. Agenda Section Header
             item {
                 Row(
                     modifier = Modifier
@@ -313,30 +339,47 @@ fun CalendarScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Events for $selectedDateString",
-                        color = textMain,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = selectedDay.toString(),
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (calendarViewMode == "WEEK") "WEEKLY AGENDA" else if (calendarViewMode == "MONTH") "MONTHLY AGENDA" else "EVENTS FOR $selectedDateString",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
-                    Text(
-                        text = "${selectedDayEvents.size} Scheduled",
-                        color = activeAccentColor,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF0284C7).copy(alpha = 0.2f))
+                            .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${displayedEvents.size} Scheduled",
+                            color = Color(0xFF38BDF8),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
-            // Selected Day Events List
+            // 5. Scope-Aware Agenda Event Cards
             if (isLoading) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = activeAccentColor)
+                        CircularProgressIndicator(color = Color(0xFF007AFF))
                     }
                 }
-            } else if (selectedDayEvents.isEmpty()) {
+            } else if (displayedEvents.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier
@@ -345,26 +388,24 @@ fun CalendarScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Event, contentDescription = null, tint = textSub, modifier = Modifier.size(36.dp))
+                            Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(36.dp))
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("No events scheduled for this day.", color = textSub, fontSize = 14.sp)
+                            Text("No events scheduled for this period.", color = Color(0xFF94A3B8), fontSize = 14.sp)
                         }
                     }
                 }
             } else {
-                items(selectedDayEvents, key = { it.id }) { eventItem ->
-                    CalendarEventCard(
+                items(displayedEvents, key = { it.id }) { eventItem ->
+                    AgendaEventCard(
                         eventItem = eventItem,
-                        backdrop = currentBackdrop,
-                        isDarkMode = isDarkMode,
-                        activeAccentColor = activeAccentColor,
-                        textMain = textMain,
-                        textSub = textSub,
                         onDelete = {
                             events = events.filter { it.id != eventItem.id }
                             currentUser.householdId?.let { hid ->
                                 db.collection("households").document(hid)
                                     .collection("events").document(eventItem.id)
+                                    .delete()
+                                db.collection("households").document(hid)
+                                    .collection("calendar_events").document(eventItem.id)
                                     .delete()
                             }
                             CalendarAlarmScheduler.cancelReminder(context, eventItem.id)
@@ -374,97 +415,51 @@ fun CalendarScreen(
             }
         }
 
-        // 2. Floating Action Button Overlay (Identical to Pantry)
-        Row(
+        // Single Primary Blue + FAB Anchored at bottom = 96.dp, end = 24.dp
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 96.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(end = 24.dp, bottom = 96.dp)
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(com.example.pantry.ui.theme.LocalAppColors.current.fabColor, com.example.pantry.ui.theme.LocalAppColors.current.primaryAccent)
+                    )
+                )
+                .clickable { showAddEventDialog = true },
+            contentAlignment = Alignment.Center
         ) {
-            // Today / Jump Glass Button
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .drawBackdrop(
-                        backdrop = currentBackdrop,
-                        shape = { CircleShape },
-                        effects = {
-                            vibrancy()
-                            blur(8.dp.toPx())
-                            lens(10.dp.toPx(), 14.dp.toPx())
-                        },
-                        highlight = { Highlight(width = 1.dp, alpha = 0.45f) },
-                        shadow = { Shadow(radius = 12.dp, alpha = 0.25f) },
-                        onDrawSurface = { drawRect(Color.White.copy(alpha = 0.10f)) }
-                    )
-                    .clickable {
-                        val now = Calendar.getInstance()
-                        currentYear = now.get(Calendar.YEAR)
-                        currentMonth = now.get(Calendar.MONTH)
-                        selectedDay = now.get(Calendar.DAY_OF_MONTH)
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.CalendarToday,
-                    contentDescription = "Today",
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            // Add Event Glass FAB (Accent Blue)
-            Box(
-                modifier = Modifier
-                    .size(54.dp)
-                    .drawBackdrop(
-                        backdrop = currentBackdrop,
-                        shape = { CircleShape },
-                        effects = {
-                            vibrancy()
-                            blur(8.dp.toPx())
-                            lens(12.dp.toPx(), 16.dp.toPx())
-                        },
-                        highlight = { Highlight(width = 1.2.dp, alpha = 0.6f) },
-                        shadow = { Shadow(radius = 16.dp, alpha = 0.35f) },
-                        onDrawSurface = { drawRect(Color(0xFF007AFF).copy(alpha = 0.85f)) }
-                    )
-                    .clickable { showAddEventDialog = true },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Add Event",
-                    tint = Color.White,
-                    modifier = Modifier.size(26.dp)
-                )
-            }
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Add Event",
+                tint = Color.White,
+                modifier = Modifier.size(28.dp)
+            )
         }
     }
 
-    // Schedule Event Dialog
+    // Schedule Event Sheet Dialog
     if (showAddEventDialog) {
         AddEventCenteredDialog(
             initialDate = selectedDateString,
-            backdrop = currentBackdrop,
             themePreference = currentUser.themePreference,
             onDismiss = { showAddEventDialog = false },
             onAdd = { newEvent ->
                 events = events + newEvent
                 currentUser.householdId?.let { hid ->
-                    val docRef = db.collection("households").document(hid).collection("events").document(newEvent.id)
                     val data = hashMapOf(
+                        "id" to newEvent.id,
                         "title" to newEvent.title,
                         "date" to newEvent.date,
                         "time" to newEvent.time,
                         "notes" to newEvent.notes,
                         "category" to newEvent.category
                     )
-                    docRef.set(data, SetOptions.merge())
+                    db.collection("households").document(hid).collection("events").document(newEvent.id).set(data, SetOptions.merge())
+                    db.collection("households").document(hid).collection("calendar_events").document(newEvent.id).set(data, SetOptions.merge())
                 }
 
-                // Schedule exact alarm via AlarmManager
                 val reminderMillis = parseEventDateTimeToEpoch(newEvent.date, newEvent.time)
                 CalendarAlarmScheduler.scheduleReminder(
                     context = context,
@@ -474,7 +469,6 @@ fun CalendarScreen(
                     eventNotes = newEvent.notes,
                     reminderEpochMillis = reminderMillis
                 )
-
                 showAddEventDialog = false
             }
         )
@@ -482,169 +476,236 @@ fun CalendarScreen(
 }
 
 @Composable
-fun MonthOverviewGlassCard(
-    backdrop: Backdrop,
+fun UpcomingHeroCard(focusEvent: CalendarEvent) {
+    val accentColor = getCategoryAccentColor(focusEvent.category)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .themedCard(20.dp)
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF38BDF8))
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "UPCOMING EVENT",
+                        color = Color(0xFF38BDF8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accentColor.copy(alpha = 0.20f))
+                        .border(0.5.dp, accentColor.copy(alpha = 0.40f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = focusEvent.category,
+                        color = accentColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Text(
+                text = focusEvent.title,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Event,
+                        contentDescription = null,
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = focusEvent.date,
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = focusEvent.time,
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MainCalendarCard(
     currentYear: Int,
     currentMonth: Int,
     selectedDay: Int,
     monthTitle: String,
     calendarViewMode: String,
-    weekDays: List<Triple<Int, Int, Int>>,
     daysInMonth: Int,
     firstDayOfWeekOffset: Int,
+    weekDays: List<Triple<Int, Int, Int>>,
     events: List<CalendarEvent>,
-    activeAccentColor: Color,
-    textMain: Color,
-    textSub: Color,
     onMonthPrev: () -> Unit,
     onMonthNext: () -> Unit,
-    onToggleViewMode: () -> Unit,
     onSelectDay: (year: Int, month: Int, day: Int) -> Unit
 ) {
-    val cardShape = remember { RoundedCornerShape(24.dp) }
+    val dayLabels = listOf("S", "M", "T", "W", "T", "F", "S")
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { cardShape },
-                effects = {
-                    vibrancy()
-                    blur(10.dp.toPx())
-                    lens(refractionHeight = 8.dp.toPx(), refractionAmount = 12.dp.toPx())
-                },
-                highlight = { Highlight(width = 1.dp, alpha = 0.35f) },
-                shadow = { Shadow(radius = 16.dp, alpha = 0.25f, offset = DpOffset(0.dp, 6.dp)) },
-                onDrawSurface = {
-                    drawRect(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.12f),
-                                Color.White.copy(alpha = 0.04f)
-                            )
-                        )
-                    )
-                }
-            )
-            .padding(14.dp)
+            .themedCard(24.dp)
+            .padding(16.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // Month Navigation Row
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Month Header Bar with Navigation Arrows
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onMonthPrev) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Month", tint = textMain)
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "Previous Month", tint = Color.White)
                 }
 
                 Text(
                     text = monthTitle,
-                    color = textMain,
+                    color = Color.White,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onToggleViewMode) {
-                        Text(
-                            text = if (calendarViewMode == "WEEK") "Month View" else "Week View",
-                            color = activeAccentColor,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    IconButton(onClick = onMonthNext) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = "Next Month", tint = textMain)
-                    }
+                IconButton(onClick = onMonthNext) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Next Month", tint = Color.White)
                 }
             }
 
-            // Days Strip / Month Grid
+            // Day-of-Week Labels Header (7 columns)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                dayLabels.forEachIndexed { idx, label ->
+                    val color = if (idx == 0 || idx == 6) Color(0xFFEF4444) else Color(0xFF64748B)
+                    Text(
+                        text = label,
+                        color = color,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = Color.White.copy(alpha = 0.10f), thickness = 0.5.dp)
+
             if (calendarViewMode == "WEEK") {
-                val daysOfWeek = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+                // Single Horizontal 7-Day Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    weekDays.forEachIndexed { idx, (y, m, d) ->
+                    weekDays.forEach { (y, m, d) ->
                         val isSelected = y == currentYear && m == currentMonth && d == selectedDay
                         val dayStr = String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d)
-                        val hasEvent = events.any { it.date == dayStr }
+                        val dayEvents = events.filter { it.date == dayStr }
 
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .drawBackdrop(
-                                    backdrop = backdrop,
-                                    shape = { RoundedCornerShape(16.dp) },
-                                    effects = {
-                                        if (isSelected) {
-                                            lens(6.dp.toPx(), 10.dp.toPx())
-                                        }
-                                    },
-                                    onDrawSurface = {
-                                        drawRect(if (isSelected) Color(0xFF007AFF).copy(alpha = 0.25f) else Color.Transparent)
-                                    }
-                                )
-                                .clickable { onSelectDay(y, m, d) }
-                                .padding(vertical = 8.dp, horizontal = 10.dp),
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) Color(0xFF007AFF) else Color.Transparent)
+                                .clickable { onSelectDay(y, m, d) },
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    text = daysOfWeek[idx],
-                                    color = if (isSelected) Color.White else textSub,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
                                 Text(
                                     text = d.toString(),
-                                    color = if (isSelected) Color.White else textMain,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 )
-
-                                if (hasEvent) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .size(4.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isSelected) Color.White else activeAccentColor)
-                                    )
+                                if (dayEvents.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        dayEvents.take(3).forEach { evt ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(4.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isSelected) Color.White else getCategoryAccentColor(evt.category))
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            } else {
-                // Month Grid View
-                val daysOfWeek = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    daysOfWeek.forEach { dayName ->
-                        Text(
-                            text = dayName,
-                            color = textSub,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
 
+                // Bottom Collapse Expander Drag Handle
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(38.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color(0xFF334155))
+                    )
+                }
+            } else {
+                // 7-Column Month Grid View
                 val totalSlots = daysInMonth + firstDayOfWeekOffset
                 val rows = (totalSlots + 6) / 7
 
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (r in 0 until rows) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -655,31 +716,39 @@ fun MonthOverviewGlassCard(
                                 if (dayNum in 1..daysInMonth) {
                                     val isSelected = dayNum == selectedDay
                                     val dayStr = String.format(Locale.US, "%04d-%02d-%02d", currentYear, currentMonth + 1, dayNum)
-                                    val hasEvent = events.any { it.date == dayStr }
+                                    val dayEvents = events.filter { it.date == dayStr }
 
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
                                             .aspectRatio(1f)
-                                            .clip(CircleShape)
-                                            .background(if (isSelected) activeAccentColor else Color.Transparent)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isSelected) Color(0xFF007AFF) else Color.Transparent)
                                             .clickable { onSelectDay(currentYear, currentMonth, dayNum) },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
                                             Text(
                                                 text = dayNum.toString(),
-                                                color = if (isSelected) Color.White else textMain,
+                                                color = Color.White,
                                                 fontSize = 14.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                             )
-                                            if (hasEvent) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(4.dp)
-                                                        .clip(CircleShape)
-                                                        .background(if (isSelected) Color.White else activeAccentColor)
-                                                )
+                                            if (dayEvents.isNotEmpty()) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    dayEvents.take(3).forEach { evt ->
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(4.dp)
+                                                                .clip(CircleShape)
+                                                                .background(if (isSelected) Color.White else getCategoryAccentColor(evt.category))
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -696,527 +765,335 @@ fun MonthOverviewGlassCard(
 }
 
 @Composable
-fun UpcomingHeroGlassCard(
-    focusEvent: CalendarEvent,
-    backdrop: Backdrop,
-    activeAccentColor: Color,
-    textMain: Color,
-    textSub: Color
+fun AgendaEventCard(
+    eventItem: CalendarEvent,
+    onDelete: () -> Unit
 ) {
-    val cardShape = remember { RoundedCornerShape(24.dp) }
+    val accentColor = getCategoryAccentColor(eventItem.category)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { cardShape },
-                effects = {
-                    vibrancy()
-                    blur(10.dp.toPx())
-                    lens(refractionHeight = 8.dp.toPx(), refractionAmount = 12.dp.toPx())
-                },
-                highlight = { Highlight(width = 1.dp, alpha = 0.35f) },
-                shadow = { Shadow(radius = 16.dp, alpha = 0.25f, offset = DpOffset(0.dp, 6.dp)) },
-                onDrawSurface = {
-                    drawRect(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.12f),
-                                Color.White.copy(alpha = 0.04f)
-                            )
-                        )
-                    )
-                }
-            )
-            .padding(18.dp)
+            .themedCard(18.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(activeAccentColor)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                // Left Accent Stripe (width = 4.dp, fill matching category)
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(accentColor)
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "UPCOMING EVENT",
-                        color = activeAccentColor,
+                        text = eventItem.title,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${eventItem.time}${if (eventItem.notes.isNotBlank()) " • ${eventItem.notes}" else ""}",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Category Tag Pill (height = 24.dp)
+                Box(
+                    modifier = Modifier
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accentColor.copy(alpha = 0.20f))
+                        .border(0.5.dp, accentColor.copy(alpha = 0.40f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = eventItem.category,
+                        color = accentColor,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(activeAccentColor.copy(alpha = 0.20f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(focusEvent.category, color = activeAccentColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+                Spacer(modifier = Modifier.width(6.dp))
 
-            Text(
-                text = focusEvent.title,
-                color = textMain,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CalendarToday, contentDescription = null, tint = textSub, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(focusEvent.date, color = textSub, fontSize = 12.sp)
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Schedule, contentDescription = null, tint = textSub, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(focusEvent.time, color = textSub, fontSize = 12.sp)
-                }
-            }
-
-            if (focusEvent.notes.isNotBlank()) {
-                Text(
-                    text = focusEvent.notes,
-                    color = Color.White.copy(alpha = 0.70f),
-                    fontSize = 12.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun CalendarEventCard(
-    eventItem: CalendarEvent,
-    backdrop: Backdrop,
-    isDarkMode: Boolean = true,
-    activeAccentColor: Color,
-    textMain: Color,
-    textSub: Color,
-    onDelete: () -> Unit
-) {
-    val cardShape = remember { RoundedCornerShape(28.dp) }
-    val emoji = when {
-        eventItem.notes.contains("shift", ignoreCase = true) || eventItem.category.equals("Shift", ignoreCase = true) -> "📦"
-        eventItem.category.equals("Appointment", ignoreCase = true) -> "📅"
-        eventItem.notes.contains("birthday", ignoreCase = true) || eventItem.category.equals("Birthday", ignoreCase = true) -> "🎂"
-        eventItem.category.equals("Medical", ignoreCase = true) -> "🩺"
-        eventItem.category.equals("Household", ignoreCase = true) -> "🧻"
-        else -> "🔔"
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { cardShape },
-                effects = {
-                    vibrancy()
-                    blur(8.dp.toPx())
-                    lens(
-                        refractionHeight = 16.dp.toPx(),
-                        refractionAmount = 24.dp.toPx(),
-                        chromaticAberration = true
+                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete Event",
+                        tint = Color(0xFFEF4444).copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp)
                     )
-                },
-                highlight = { Highlight(width = 1.2.dp, alpha = 0.45f) },
-                shadow = { Shadow(radius = 16.dp, alpha = 0.25f, offset = DpOffset(0.dp, 6.dp)) },
-                innerShadow = { InnerShadow(radius = 6.dp, alpha = 0.18f) },
-                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.08f)) }
-            )
-            .padding(14.dp)
-    ) {
-        CompositionLocalProvider(
-            LocalTextStyle provides TextStyle(
-                color = Color.White,
-                shadow = androidx.compose.ui.graphics.Shadow(
-                    color = Color.Black.copy(alpha = 0.60f),
-                    offset = Offset(0f, 2f),
-                    blurRadius = 6f
-                )
-            )
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Inset Glass Emoji / Category Badge
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .drawBackdrop(
-                                backdrop = backdrop,
-                                shape = { CircleShape },
-                                effects = {
-                                    vibrancy()
-                                    blur(4.dp.toPx())
-                                    lens(
-                                        refractionHeight = 8.dp.toPx(),
-                                        refractionAmount = 12.dp.toPx(),
-                                        chromaticAberration = true
-                                    )
-                                },
-                                highlight = { Highlight(width = 1.dp, alpha = 0.5f) },
-                                shadow = { Shadow(radius = 8.dp, alpha = 0.2f) },
-                                innerShadow = { InnerShadow(radius = 4.dp, alpha = 0.25f) },
-                                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.16f)) }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = emoji,
-                            fontSize = 24.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = eventItem.title,
-                            color = textMain,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "${eventItem.category}${if (eventItem.notes.isNotBlank()) " • ${eventItem.notes}" else ""}",
-                            color = Color.White.copy(alpha = 0.65f),
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Right Status Tag / Time Pill
-                    Box(
-                        modifier = Modifier
-                            .drawBackdrop(
-                                backdrop = backdrop,
-                                shape = { Capsule() },
-                                effects = {
-                                    vibrancy()
-                                    blur(4.dp.toPx())
-                                    lens(8.dp.toPx(), 12.dp.toPx())
-                                },
-                                highlight = { Highlight(width = 1.dp, alpha = 0.40f) },
-                                onDrawSurface = { drawRect(Color.White.copy(alpha = 0.12f)) }
-                            )
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = eventItem.time,
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete Event",
-                            tint = Color.White.copy(alpha = 0.60f),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddEventCenteredDialog(
     initialDate: String,
-    backdrop: Backdrop? = null,
     themePreference: String = "DEFAULT",
     onDismiss: () -> Unit,
     onAdd: (CalendarEvent) -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var dateText by remember { mutableStateOf(initialDate) }
-    var timeText by remember { mutableStateOf("10:00 AM") }
-    var category by remember { mutableStateOf("Appointment") }
-    var notes by remember { mutableStateOf("") }
+    var startTimeText by remember { mutableStateOf("5:00 PM") }
+    var endTimeText by remember { mutableStateOf("6:30 PM") }
+    var category by remember { mutableStateOf("Restock") }
+    var locationDetails by remember { mutableStateOf("") }
+    var reminderEnabled by remember { mutableStateOf(true) }
 
-    var showDatePicker by remember { mutableStateOf(false) }
-    var showTimePicker by remember { mutableStateOf(false) }
-
-    val context = LocalContext.current
-    val categories = listOf("Appointment", "Medical", "Household", "Personal")
-
-    val activeAccentColor = if (themePreference.equals("PURPLE", ignoreCase = true)) {
-        Color(0xFFC084FC)
-    } else {
-        Color(0xFF007AFF)
-    }
-
-    val initialMillis = remember(initialDate) {
-        runCatching {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            sdf.parse(initialDate)?.time
-        }.getOrNull() ?: System.currentTimeMillis()
-    }
-
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = initialMillis
-    )
-
-    val parsedTime = remember(timeText) {
-        runCatching {
-            val clean = parsePunchTimeSafely(timeText)
-            val isPm = clean.contains("PM", ignoreCase = true)
-            val parts = clean.replace("AM", "").replace("PM", "").trim().split(":")
-            var h = parts[0].toInt()
-            val m = if (parts.size > 1) parts[1].toInt() else 0
-            if (isPm && h < 12) h += 12
-            if (!isPm && h == 12) h = 0
-            Pair(h, m)
-        }.getOrDefault(Pair(10, 0))
-    }
-
-    val timePickerState = rememberTimePickerState(
-        initialHour = parsedTime.first,
-        initialMinute = parsedTime.second,
-        is24Hour = false
+    val categories = listOf(
+        "Restock" to "🛒",
+        "Shift" to "⏰",
+        "Upkeep" to "🚗",
+        "Chore" to "🧼",
+        "Appointment" to "🩺"
     )
 
     GlassBottomSheet(
         onDismissRequest = onDismiss,
-        backdrop = backdrop,
         themePreference = themePreference
-    ) { _ ->
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(4.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Header Section
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Column {
+                    Text(
+                        text = "Schedule Event",
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-0.3).sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Add a shift, restock run, or chore to the agenda",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF0F172A))
+                        .border(1.dp, Color(0xFF334155), CircleShape)
+                        .clickable { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                }
+            }
+
+            // Category Pill Selector
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
-                    text = "Schedule Event",
-                    color = Color.White,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "EVENT TYPE",
+                    color = Color(0xFF64748B),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp
                 )
 
-                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.70f), modifier = Modifier.size(18.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(categories) { (catName, emoji) ->
+                        val isSelected = category == catName
+                        val catColor = getCategoryAccentColor(catName)
+                        Box(
+                            modifier = Modifier
+                                .height(32.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (isSelected) catColor.copy(alpha = 0.25f) else Color(0xFF0F172A))
+                                .border(1.dp, if (isSelected) catColor else Color(0xFF334155), RoundedCornerShape(16.dp))
+                                .clickable { category = catName }
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$emoji $catName",
+                                color = if (isSelected) catColor else Color(0xFF94A3B8),
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
 
             val inputColors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color.White.copy(alpha = 0.10f),
-                unfocusedContainerColor = Color.White.copy(alpha = 0.10f),
-                focusedBorderColor = activeAccentColor,
-                unfocusedBorderColor = Color.White.copy(alpha = 0.20f),
+                focusedContainerColor = Color(0xFF0F172A).copy(alpha = 0.6f),
+                unfocusedContainerColor = Color(0xFF0F172A).copy(alpha = 0.6f),
+                focusedBorderColor = Color(0xFF38BDF8),
+                unfocusedBorderColor = Color(0xFF334155),
                 focusedTextColor = Color.White,
                 unfocusedTextColor = Color.White
             )
 
+            // Title Field
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("Event Title", color = Color.White.copy(alpha = 0.70f)) },
+                label = { Text("EVENT TITLE", color = Color(0xFF38BDF8), fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                placeholder = { Text("e.g. Restock Run: Pet Supplies", color = Color(0xFF64748B), fontSize = 14.sp) },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
                 singleLine = true,
                 colors = inputColors
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedTextField(
-                    value = dateText,
-                    onValueChange = { dateText = it },
-                    label = { Text("Date (YYYY-MM-DD)", color = Color.White.copy(alpha = 0.70f)) },
-                    trailingIcon = {
-                        IconButton(onClick = { showDatePicker = true }) {
-                            Icon(Icons.Default.CalendarMonth, contentDescription = "Pick Date", tint = activeAccentColor)
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    colors = inputColors
-                )
-
-                OutlinedTextField(
-                    value = timeText,
-                    onValueChange = { timeText = it },
-                    label = { Text("Time (e.g. 10:00 AM)", color = Color.White.copy(alpha = 0.70f)) },
-                    trailingIcon = {
-                        IconButton(onClick = { showTimePicker = true }) {
-                            Icon(Icons.Default.Schedule, contentDescription = "Pick Time", tint = activeAccentColor)
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    colors = inputColors
-                )
-            }
-
-            Text("Category", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                categories.forEach { cat ->
-                    val isSelected = category == cat
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) activeAccentColor else Color.White.copy(alpha = 0.08f))
-                            .clickable { category = cat },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = cat,
-                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.65f),
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        )
-                    }
-                }
-            }
-
+            // Date Picker Field
             OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = { Text("Notes (Optional)", color = Color.White.copy(alpha = 0.70f)) },
+                value = dateText,
+                onValueChange = { dateText = it },
+                label = { Text("DATE", color = Color(0xFF38BDF8), fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                trailingIcon = { Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF38BDF8)) },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(14.dp),
+                singleLine = true,
                 colors = inputColors
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            // Start & End Time Split Row
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = startTimeText,
+                    onValueChange = { startTimeText = it },
+                    label = { Text("START TIME", color = Color(0xFF38BDF8), fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                    colors = inputColors
+                )
+                OutlinedTextField(
+                    value = endTimeText,
+                    onValueChange = { endTimeText = it },
+                    label = { Text("END TIME", color = Color(0xFF38BDF8), fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                    colors = inputColors
+                )
+            }
 
-            GlassHeroButton(
-                onClick = {
-                    if (title.isBlank()) {
-                        Toast.makeText(context, "Please enter an event title.", Toast.LENGTH_SHORT).show()
-                        return@GlassHeroButton
+            // Location / Details Field
+            OutlinedTextField(
+                value = locationDetails,
+                onValueChange = { locationDetails = it },
+                label = { Text("LOCATION / DETAILS", color = Color(0xFF38BDF8), fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                placeholder = { Text("Walmart • Cat food & puppy pads", color = Color(0xFF64748B), fontSize = 13.sp) },
+                trailingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF38BDF8)) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                singleLine = true,
+                colors = inputColors
+            )
+
+            // Push Notification Reminder Toggle Row
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF0F172A).copy(alpha = 0.6f))
+                    .border(1.dp, Color(0xFF334155), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Push Notification Reminder", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text("Alert 1 hour before scheduled time", color = Color(0xFF94A3B8), fontSize = 11.sp)
                     }
+
+                    Switch(
+                        checked = reminderEnabled,
+                        onCheckedChange = { reminderEnabled = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = Color(0xFF0284C7)
+                        )
+                    )
+                }
+            }
+
+            // Save Primary Button
+            Button(
+                onClick = {
+                    if (title.isBlank() || dateText.isBlank()) return@Button
+                    val timeFormatted = if (endTimeText.isNotBlank()) "$startTimeText – $endTimeText" else startTimeText
                     val newEvent = CalendarEvent(
                         id = UUID.randomUUID().toString(),
                         title = title.trim(),
                         date = dateText.trim(),
-                        time = timeText.trim().ifBlank { "10:00 AM" },
-                        notes = notes.trim(),
-                        category = category.trim().ifBlank { "Appointment" }
+                        time = timeFormatted,
+                        notes = locationDetails.trim(),
+                        category = category
                     )
                     onAdd(newEvent)
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))
             ) {
-                Text("Schedule Event", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("SAVE TO CALENDAR", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
             }
-        }
-    }
 
-    // Material 3 DatePickerDialog
-    if (showDatePicker) {
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
-                        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-                            timeZone = TimeZone.getTimeZone("UTC")
-                        }
-                        dateText = formatter.format(Date(millis))
-                    }
-                    showDatePicker = false
-                }) {
-                    Text("OK", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("Cancel", color = Color.Gray)
-                }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
-
-    // Material 3 TimePickerDialog
-    if (showTimePicker) {
-        Dialog(onDismissRequest = { showTimePicker = false }) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = Color(0xFF1C1C1E),
-                tonalElevation = 6.dp
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text("Select Time", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    TimePicker(state = timePickerState)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = { showTimePicker = false }) {
-                            Text("Cancel", color = Color.Gray)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(onClick = {
-                            val hour = timePickerState.hour
-                            val minute = timePickerState.minute
-                            val isPm = hour >= 12
-                            val displayHour = when {
-                                hour == 0 -> 12
-                                hour > 12 -> hour - 12
-                                else -> hour
-                            }
-                            timeText = String.format(Locale.US, "%02d:%02d %s", displayHour, minute, if (isPm) "PM" else "AM")
-                            showTimePicker = false
-                        }) {
-                            Text("OK", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
+            Text(
+                text = "Discard",
+                color = Color(0xFF64748B),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onDismiss() }
+                    .padding(vertical = 4.dp)
+            )
         }
     }
 }

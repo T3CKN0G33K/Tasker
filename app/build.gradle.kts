@@ -63,7 +63,7 @@ android {
 
 dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.6")
-    implementation("io.github.kyant0:shapes:1.0.1")
+    // implementation("io.github.kyant0:shapes:1.0.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation(platform(libs.androidx.compose.bom))
