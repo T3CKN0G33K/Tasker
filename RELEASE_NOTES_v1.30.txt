@@ -1,0 +1,45 @@
+===================================================================
+TASKER / PANTRY TRACKER - RELEASE NOTES (v1.30 - Build 31)
+===================================================================
+Release Date: October 17, 2026
+APK Asset: Tasker_v1.30_Build31.apk
+Version Name: 1.30
+Version Code: 31
+
+-------------------------------------------------------------------
+HIGHLIGHTS & MAJOR REFACTORED IMPROVEMENTS (v1.29 -> v1.30)
+-------------------------------------------------------------------
+
+1. PANTRY SCREEN IMPROVEMENTS (PantryScreen.kt, PantryForecast.kt, PantryTracking.kt):
+   • Moved "Add item" into the top header row for streamlined access.
+   • Clarified tracking choices and eliminated legacy/manual tracking mode for new items.
+   • Initial stock recorded through inventory event path.
+   • Supply Spending Forecast compact and collapsed by default with unit tests.
+
+2. BUDGET & LEDGER OFFLINE RESILIENCE (BudgetScreen.kt):
+   • Made Supply Spending Forecast compact and collapsed by default.
+   • Added clear Cloud Firestore offline and load-error messaging.
+   • Attached bill listeners before server-only rollover checks so cached bills display when offline.
+   • Avoids initializing a new billing cycle when Cloud Firestore is offline.
+
+3. CALENDAR & APPOINTMENTS (CalendarScreen.kt):
+   • Added Scheduled / Attended / Reschedule appointment statuses with full appointment history.
+   • Saves to canonical `events` collection.
+   • Queues event changes locally when offline instead of leaving dialogs stuck.
+
+4. HOUSE BOARD & MEMBER MANAGEMENT (HouseBoardScreen.kt, SettingsScreen.kt):
+   • Live Cloud Firestore notes and pinned notices synchronization without demo seeding loops.
+   • Real-time Live Household Members dialog (`ManageHouseholdDialog`) displaying all registered members from Cloud Firestore (`users` where `householdId == currentUser.householdId`).
+
+5. DYNAMIC SEASONAL THEMES & LOCALAPPCOLORS:
+   • Centralized theme token system (`AppThemeColors`, `LocalAppColors`, `TaskerTheme`).
+   • Supported seasonal palettes: Halloween, Harvest Thanksgiving, Festive Christmas, New Year Frost & Gold.
+   • Automatic Calendar Theme Scheduler (`ThemeScheduleHelper.kt`).
+   • Root theme resolution and `LocalAppColors` binding across all 5 main screen composables.
+
+6. PLAID & CLOUDFLARE WORKER INTEGRATION:
+   • Added `PlaidFinanceRepository.kt` & `PLAID_SETUP.md`.
+   • Added Cloudflare Worker template (`worker/`) and Firebase Cloud Functions template (`functions/`), `firebase.json`, `.firebaserc`.
+   • Zero secrets or private tokens exposed across all files.
+
+===================================================================

@@ -16,8 +16,8 @@ android {
         applicationId = "com.example.tasker"
         minSdk = 26
         targetSdk = 36
-        versionCode = 30
-        versionName = "1.29"
+        versionCode = 31
+        versionName = "1.30"
         // Public HTTPS origin only; never place Plaid credentials here.
         val plaidOrigin = providers.gradleProperty("plaidWorkerUrl").orElse("").get()
         require(plaidOrigin.isEmpty() || Regex("https://[A-Za-z0-9.-]+(?::443)?").matches(plaidOrigin)) {
