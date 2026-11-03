@@ -52,6 +52,7 @@ import com.example.pantry.ui.theme.DefaultObsidianColors
 import com.example.pantry.ui.theme.HalloweenColors
 import com.example.pantry.ui.theme.LocalAppColors
 import com.example.pantry.ui.theme.TaskerTheme
+import com.example.pantry.ui.theme.withLightAppearance
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -160,13 +161,16 @@ fun AppRoot() {
             db.collection("users").document(firebaseUser.uid)
                 .addSnapshotListener { doc, _ ->
                     if (doc != null && doc.exists()) {
-                        val roleStr = doc.getString("role") ?: savedProfile.role.name
-                        val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
-                        val householdId = doc.getString("householdId") ?: savedProfile.householdId
-                        val canManage = doc.getBoolean("canManageHousehold") ?: savedProfile.canManageHousehold
-                        val themePref = doc.getString("themePreference") ?: activeUser?.themePreference ?: savedProfile.themePreference
+                        val baseProfile = activeUser ?: savedProfile
+                        val roleStr = doc.getString("role") ?: baseProfile.role.name
+                        val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
+                        val householdId = doc.getString("householdId") ?: baseProfile.householdId
+                        val canManage = doc.getBoolean("canManageHousehold") ?: baseProfile.canManageHousehold
+                        val themePref = doc.getString("themePreference") ?: baseProfile.themePreference
 
-                        val syncedProfile = savedProfile.copy(
+                        val syncedProfile = baseProfile.copy(
+                            name = doc.getString("name") ?: baseProfile.name,
+                            email = doc.getString("email") ?: baseProfile.email,
                             role = role, 
                             householdId = householdId, 
                             canManageHousehold = canManage,
@@ -193,72 +197,111 @@ fun AppRoot() {
         }
     }
 
-    AnimatedContent(
-        targetState = currentAppState,
-        transitionSpec = {
-            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
-        },
-        label = "RootRouting"
-    ) { state ->
-        when (state) {
-            AppState.LOADING -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        CircularProgressIndicator(color = Color(0xFF007AFF))
-                        Text("Connecting to Household...", color = Color.Gray, fontSize = 14.sp)
-                    }
-                }
-            }
-            AppState.AUTH -> AuthScreen(
-                onAuthRouting = { profile, targetState ->
-                    activeUser = profile
-                    currentAppState = targetState
-                }
-            )
-            AppState.ONBOARDING -> OnboardingScreen(
-                user = activeUser ?: UserProfile("", "", "", Role.OWNER, null, false),
-                onHouseholdJoined = { updatedUser ->
-                    activeUser = updatedUser
-                    UserPreferences.saveUser(context, updatedUser)
-                    currentAppState = AppState.DASHBOARD
-                },
-                onSignOut = {
-                    auth.signOut()
-                    UserPreferences.clear(context)
-                    activeUser = null
-                    currentAppState = AppState.AUTH
-                }
-            )
-            AppState.DASHBOARD -> DashboardScreen(
-                currentUser = activeUser ?: UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc"),
-                isDarkMode = isDarkMode,
-                onToggleDarkMode = { newDark ->
-                    isDarkMode = newDark
-                    UserPreferences.saveDarkMode(context, newDark)
-                },
-                onProfileUpdated = { updatedUser ->
-                    activeUser = updatedUser
-                    UserPreferences.saveUser(context, updatedUser)
-                },
-                onSignOut = {
-                    auth.signOut()
-                    UserPreferences.clear(context)
-                    activeUser = null
-                    currentAppState = AppState.AUTH
-                }
-            )
-        }
+    val baseAppColors = LocalAppColors.current
+    val appColors = remember(baseAppColors, isDarkMode) {
+        if (isDarkMode) baseAppColors else baseAppColors.withLightAppearance()
+    }
+    val appTypography = MaterialTheme.typography
+    val appColorScheme = if (isDarkMode) {
+        darkColorScheme(
+            primary = appColors.primaryAccent,
+            secondary = appColors.secondaryAccent,
+            background = appColors.background,
+            surface = appColors.cardSurface,
+            onBackground = appColors.textPrimary,
+            onSurface = appColors.textPrimary
+        )
+    } else {
+        lightColorScheme(
+            primary = appColors.primaryAccent,
+            secondary = appColors.secondaryAccent,
+            background = appColors.background,
+            surface = appColors.cardSurface,
+            onBackground = appColors.textPrimary,
+            onSurface = appColors.textPrimary
+        )
     }
 
-    pendingUpdate?.let { updateInfo ->
-        AppUpdateDialog(
-            updateInfo = updateInfo,
-            themePreference = activeUser?.themePreference ?: "DEFAULT",
-            onDismiss = { pendingUpdate = null }
-        )
+    CompositionLocalProvider(LocalAppColors provides appColors) {
+        MaterialTheme(colorScheme = appColorScheme, typography = appTypography) {
+            AnimatedContent(
+                targetState = currentAppState,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                },
+                label = "RootRouting"
+            ) { state ->
+                when (state) {
+                    AppState.LOADING -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                CircularProgressIndicator(color = Color(0xFF007AFF))
+                                Text("Connecting to Household...", color = Color.Gray, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                    AppState.AUTH -> AuthScreen(
+                        onAuthRouting = { profile, targetState ->
+                            activeUser = profile
+                            currentAppState = targetState
+                        }
+                    )
+                    AppState.ONBOARDING -> activeUser?.let { user -> OnboardingScreen(
+                        user = user,
+                        onHouseholdJoined = { updatedUser ->
+                            activeUser = updatedUser
+                            UserPreferences.saveUser(context, updatedUser)
+                            currentAppState = AppState.DASHBOARD
+                        },
+                        onSignOut = {
+                            auth.signOut()
+                            UserPreferences.clear(context)
+                            activeUser = null
+                            currentAppState = AppState.AUTH
+                        }
+                    ) } ?: AuthScreen(
+                        onAuthRouting = { profile, targetState ->
+                            activeUser = profile
+                            currentAppState = targetState
+                        }
+                    )
+                    AppState.DASHBOARD -> activeUser?.let { user -> DashboardScreen(
+                        currentUser = user,
+                        isDarkMode = isDarkMode,
+                        onToggleDarkMode = { newDark ->
+                            isDarkMode = newDark
+                            UserPreferences.saveDarkMode(context, newDark)
+                        },
+                        onProfileUpdated = { updatedUser ->
+                            activeUser = updatedUser
+                            UserPreferences.saveUser(context, updatedUser)
+                        },
+                        onSignOut = {
+                            auth.signOut()
+                            UserPreferences.clear(context)
+                            activeUser = null
+                            currentAppState = AppState.AUTH
+                        }
+                    ) } ?: AuthScreen(
+                        onAuthRouting = { profile, targetState ->
+                            activeUser = profile
+                            currentAppState = targetState
+                        }
+                    )
+                }
+            }
+
+            pendingUpdate?.let { updateInfo ->
+                AppUpdateDialog(
+                    updateInfo = updateInfo,
+                    themePreference = activeUser?.themePreference ?: "DEFAULT",
+                    onDismiss = { pendingUpdate = null }
+                )
+            }
+        }
     }
 }
 
@@ -332,8 +375,8 @@ fun handleUserAuthSuccess(
                 val themePref = userDoc?.getString("themePreference") ?: "DEFAULT"
                 if (snapshotExists && !hid.isNullOrBlank()) {
                     val name = userDoc.getString("name") ?: rawEmail.substringBefore("@").ifBlank { "User" }
-                    val roleStr = userDoc.getString("role") ?: "OWNER"
-                    val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
+                    val roleStr = userDoc.getString("role") ?: "MEMBER"
+                    val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
                     val canManage = userDoc.getBoolean("canManageHousehold") ?: (role == Role.OWNER || role == Role.ADMIN)
                     
                     completeRouting(hid, role, name, canManage, themePref)
@@ -350,8 +393,8 @@ fun handleUserAuthSuccess(
 
                         if (!emailHid.isNullOrBlank()) {
                             val name = emailDoc?.getString("name") ?: rawEmail.substringBefore("@").ifBlank { "User" }
-                            val roleStr = emailDoc?.getString("role") ?: "OWNER"
-                            val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
+                            val roleStr = emailDoc?.getString("role") ?: "MEMBER"
+                            val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
                             val canManage = emailDoc?.getBoolean("canManageHousehold") ?: (role == Role.OWNER || role == Role.ADMIN)
                             val tPref = emailDoc?.getString("themePreference") ?: "DEFAULT"
                             completeRouting(emailHid, role, name, canManage, tPref)

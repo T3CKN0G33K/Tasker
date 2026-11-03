@@ -23,7 +23,7 @@ import com.google.firebase.firestore.firestore
 
 @Composable
 fun FeedbackScreen(
-    currentUser: UserProfile = UserProfile("123", "Thomas Barton", "thomas@example.com", Role.OWNER, "house_abc")
+    currentUser: UserProfile
 ) {
     var message by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf("Bug Report") }

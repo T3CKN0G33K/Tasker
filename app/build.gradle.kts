@@ -18,6 +18,12 @@ android {
         targetSdk = 36
         versionCode = 30
         versionName = "1.29"
+        // Public HTTPS origin only; never place Plaid credentials here.
+        val plaidOrigin = providers.gradleProperty("plaidWorkerUrl").orElse("").get()
+        require(plaidOrigin.isEmpty() || Regex("https://[A-Za-z0-9.-]+(?::443)?").matches(plaidOrigin)) {
+            "plaidWorkerUrl must be an HTTPS origin without a path, query, or credentials"
+        }
+        buildConfigField("String", "PLAID_WORKER_URL", "\"$plaidOrigin\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -77,6 +83,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation(libs.androidx.activity.compose)
+    implementation("com.plaid.link:sdk-core:6.3.0")
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

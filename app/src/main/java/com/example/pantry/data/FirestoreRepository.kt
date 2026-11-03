@@ -75,7 +75,7 @@ class FirestoreRepository(
         val listener = householdRef(householdId).collection("budgets").document(cycleKey)
             .addSnapshotListener { snapshot, _ ->
                 val data = snapshot?.toObject(BudgetCycleData::class.java) 
-                    ?: BudgetCycleData(cycleId = cycleKey, allowance = 1250.00, bills = emptyList())
+                    ?: BudgetCycleData(cycleId = cycleKey, allowance = 0.0, bills = emptyList())
                 trySend(data)
             }
         awaitClose { listener.remove() }

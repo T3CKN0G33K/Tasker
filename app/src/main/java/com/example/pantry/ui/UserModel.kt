@@ -10,8 +10,8 @@ data class UserProfile(
     val householdId: String? = null,
     val canManageHousehold: Boolean = false,
     val themePreference: String = "DEFAULT", // "DEFAULT", "CYAN", "PURPLE"
-    val sickHours: Double = 4.88,
-    val vacationHours: Double = 40.00
+    val sickHours: Double = 0.0,
+    val vacationHours: Double = 0.0
 )
 
 data class FeedbackItem(

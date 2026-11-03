@@ -55,12 +55,6 @@ fun HouseBoardScreen(
 
     var boardNotes by remember { mutableStateOf<List<BoardNoteItem>>(emptyList()) }
     var showAddNoteDialog by remember { mutableStateOf(false) }
-    var showWifiAdminDialog by remember { mutableStateOf(false) }
-    var showWifiEditDialog by remember { mutableStateOf(false) }
-
-    var wifiSSID by remember { mutableStateOf("Apartment_5G_Home") }
-    var wifiPassword by remember { mutableStateOf("HomeSweetPantry2026!") }
-
     // Live Cloud Firestore Sync under households/{householdId}/board_notices & board_notes
     LaunchedEffect(currentUser.householdId) {
         currentUser.householdId?.let { hid ->
@@ -70,10 +64,10 @@ fun HouseBoardScreen(
                         val items = snapshot.documents.mapNotNull { doc ->
                             BoardNoteItem(
                                 id = doc.id,
-                                title = doc.getString("title") ?: "Notice",
+                                title = doc.getString("title")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null,
                                 content = doc.getString("content") ?: "",
                                 category = doc.getString("category") ?: "INFO",
-                                timestamp = doc.getString("dateLabel") ?: "Today",
+                                timestamp = doc.getString("dateLabel") ?: "Date unavailable",
                                 author = doc.getString("authorName"),
                                 subtext = doc.getString("subtext"),
                                 isPinned = doc.getBoolean("isPinned") ?: false
@@ -89,10 +83,7 @@ fun HouseBoardScreen(
 
     HouseBoardScreenContent(
         notes = activeNotes,
-        wifiSsid = wifiSSID,
-        wifiPasswordProvider = { wifiPassword },
         onOpenAddNote = { showAddNoteDialog = true },
-        onAdminUnlocked = { showWifiAdminDialog = true },
         onDeleteNote = { noteId ->
             boardNotes = boardNotes.filter { it.id != noteId }
             currentUser.householdId?.let { hid ->
@@ -137,44 +128,18 @@ fun HouseBoardScreen(
         )
     }
 
-    // Wi-Fi Master PIN Unlock Dialog
-    if (showWifiAdminDialog) {
-        WifiAdminUnlockDialog(
-            onDismiss = { showWifiAdminDialog = false },
-            onSuccess = {
-                showWifiAdminDialog = false
-                showWifiEditDialog = true
-            }
-        )
-    }
 
-    // Wi-Fi Credentials Editor Dialog
-    if (showWifiEditDialog) {
-        WifiEditDialog(
-            currentSSID = wifiSSID,
-            currentPassword = wifiPassword,
-            onDismiss = { showWifiEditDialog = false },
-            onSave = { newSSID, newPassword ->
-                wifiSSID = newSSID
-                wifiPassword = newPassword
-                showWifiEditDialog = false
-                Toast.makeText(context, "Wi-Fi network credentials updated!", Toast.LENGTH_SHORT).show()
-            }
-        )
-    }
 }
 
 @Composable
 fun HouseBoardScreenContent(
     notes: List<BoardNoteItem>,
-    wifiSsid: String = "Apartment_5G_Home",
-    wifiPasswordProvider: () -> String = { "HomeSweetPantry2026!" },
     onOpenAddNote: () -> Unit,
-    onAdminUnlocked: () -> Unit,
     onDeleteNote: (String) -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
+    val appColors = com.example.pantry.ui.theme.LocalAppColors.current
 
     // 10-Tap Gesture State
     var tapCount by remember { mutableIntStateOf(0) }
@@ -203,13 +168,13 @@ fun HouseBoardScreenContent(
                             text = "House Board",
                             fontSize = 28.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color.White,
+                            color = appColors.textPrimary,
                             letterSpacing = (-0.5).sp
                         )
                         Text(
                             text = "Shared Household Ledger & Notices",
                             fontSize = 13.sp,
-                            color = Color(0xFF94A3B8)
+                            color = appColors.textSecondary
                         )
                     }
 
@@ -230,107 +195,6 @@ fun HouseBoardScreenContent(
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
-            }
-
-            // Household Network Card (NO card-level clickable, 10-tap isolated to icon)
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    color = Color.Transparent,
-                    border = BorderStroke(1.2.dp, Color(0xFF38BDF8).copy(alpha = 0.35f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color(0xFF1E293B).copy(alpha = 0.85f),
-                                        Color(0xFF0F172A).copy(alpha = 0.95f)
-                                    )
-                                )
-                            )
-                            .padding(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // 10-TAP ICON ONLY
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFF0284C7).copy(alpha = 0.25f))
-                                    .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.4f), RoundedCornerShape(14.dp))
-                                    .clickable {
-                                        tapCount++
-                                        resetJob?.cancel()
-                                        resetJob = coroutineScope.launch {
-                                            delay(1500)
-                                            tapCount = 0
-                                        }
-                                        if (tapCount >= 10) {
-                                            tapCount = 0
-                                            resetJob?.cancel()
-                                            onAdminUnlocked()
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(text = "📡", fontSize = 22.sp)
-                            }
-
-                            Spacer(modifier = Modifier.width(14.dp))
-
-                            // Network Details (Static Text)
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "HOUSEHOLD NETWORK",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF94A3B8),
-                                    letterSpacing = 0.5.sp
-                                )
-                                Text(
-                                    text = wifiSsid,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-
-                            // Copy Password Button
-                            Button(
-                                onClick = {
-                                    clipboardManager.setText(AnnotatedString(wifiPasswordProvider()))
-                                },
-                                shape = RoundedCornerShape(17.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
-                                border = BorderStroke(1.dp, Color(0xFF334155)),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = "Copy PW",
-                                    color = Color(0xFF38BDF8),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(28.dp))
-                Text(
-                    text = "SHARED HOUSEHOLD NOTES",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF64748B),
-                    letterSpacing = 0.8.sp
-                )
-                Spacer(modifier = Modifier.height(12.dp))
             }
 
             // Note Cards with Explicit Inlined Gradients
@@ -471,136 +335,4 @@ fun HouseBoardScreenContent(
             Text(text = "+", fontSize = 28.sp, fontWeight = FontWeight.Light)
         }
     }
-}
-
-@Composable
-fun WifiAdminUnlockDialog(
-    onDismiss: () -> Unit,
-    onSuccess: () -> Unit
-) {
-    var pinText by remember { mutableStateOf("") }
-    var isError by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (pinText.trim() == "2026" || pinText.trim() == "1234") {
-                        onSuccess()
-                    } else {
-                        isError = true
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Unlock", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color.Gray)
-            }
-        },
-        title = {
-            Text("Admin Security Unlock", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Enter Master Admin PIN to edit Wi-Fi network credentials.", color = Color.LightGray, fontSize = 13.sp)
-                OutlinedTextField(
-                    value = pinText,
-                    onValueChange = {
-                        pinText = it
-                        isError = false
-                    },
-                    label = { Text("Master PIN (Default: 2026)", color = Color.Gray) },
-                    singleLine = true,
-                    isError = isError,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF38BDF8),
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (isError) {
-                    Text("Incorrect PIN. Please try again.", color = Color(0xFFFF3B30), fontSize = 12.sp)
-                }
-            }
-        },
-        containerColor = Color(0xFF0F172A),
-        shape = RoundedCornerShape(24.dp)
-    )
-}
-
-@Composable
-fun WifiEditDialog(
-    currentSSID: String,
-    currentPassword: String,
-    onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit
-) {
-    var ssid by remember { mutableStateOf(currentSSID) }
-    var password by remember { mutableStateOf(currentPassword) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (ssid.isNotBlank()) {
-                        onSave(ssid.trim(), password.trim())
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Save Credentials", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color.Gray)
-            }
-        },
-        title = {
-            Text("Edit Wi-Fi Network", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = ssid,
-                    onValueChange = { ssid = it },
-                    label = { Text("Network SSID", color = Color.Gray) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF38BDF8),
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Network Password", color = Color.Gray) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF38BDF8),
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        containerColor = Color(0xFF0F172A),
-        shape = RoundedCornerShape(24.dp)
-    )
 }

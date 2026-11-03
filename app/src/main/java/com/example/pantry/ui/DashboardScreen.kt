@@ -33,6 +33,7 @@ import com.example.pantry.notifications.NotificationHelper
 import com.example.tasker.R
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.firestore
 
 
@@ -82,74 +83,130 @@ fun DashboardScreen(
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var pantryItems by remember { mutableStateOf<List<PantryItem>>(emptyList()) }
+    var pantryLoading by remember { mutableStateOf(true) }
+    var pantrySyncError by remember { mutableStateOf<String?>(null) }
+    var pantryProductToOpen by remember { mutableStateOf<String?>(null) }
+    var pantryFullScreenDestination by remember { mutableStateOf(false) }
+    var forecastNowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val purchasePriceHistoryByItem = remember { androidx.compose.runtime.mutableStateMapOf<String, List<Double>>() }
     var showAboutVersionScreen by remember { mutableStateOf(false) }
     var showProfileEditScreen by remember { mutableStateOf(false) }
 
     val db = Firebase.firestore
 
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            forecastNowMillis = System.currentTimeMillis()
+        }
+    }
+
     // Real-time Firestore Sync at Dashboard level
-    LaunchedEffect(currentUser.householdId) {
-        currentUser.householdId?.let { householdId ->
-            // 1. Pantry Inventory Sync
-            db.collection("households").document(householdId).collection("inventory")
+    DisposableEffect(currentUser.householdId) {
+        purchasePriceHistoryByItem.clear()
+        pantryItems = emptyList()
+        pantryLoading = true
+        pantrySyncError = null
+        val householdId = currentUser.householdId
+        if (householdId == null) {
+            pantryLoading = false
+            onDispose { }
+        } else {
+            val purchaseListeners = mutableMapOf<String, ListenerRegistration>()
+            val inventoryListener = db.collection("households").document(householdId).collection("inventory")
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
+                        pantryLoading = false
+                        pantrySyncError = error.localizedMessage ?: "Inventory could not be synchronized."
                         Toast.makeText(context, "Sync Error: ${error.message}", Toast.LENGTH_LONG).show()
                         return@addSnapshotListener
                     }
                     if (snapshot != null) {
+                        pantryLoading = false
+                        pantrySyncError = null
+                        val activeIds = snapshot.documents.map { it.id }.toSet()
+                        purchaseListeners.keys.filterNot(activeIds::contains).toList().forEach { staleId ->
+                            purchaseListeners.remove(staleId)?.remove()
+                            purchasePriceHistoryByItem.remove(staleId)
+                        }
+                        snapshot.documents.forEach { doc ->
+                            if (doc.id !in purchaseListeners) {
+                                purchaseListeners[doc.id] = doc.reference.collection("events")
+                                    .whereEqualTo("type", PantryEventType.PURCHASE_RECORDED.name)
+                                    .addSnapshotListener { eventSnapshot, _ ->
+                                        if (eventSnapshot == null) return@addSnapshotListener
+                                        val history = eventSnapshot.documents.mapNotNull { eventDoc ->
+                                            val event = eventDoc.data.orEmpty()
+                                            val metadata = event["metadata"] as? Map<*, *> ?: return@mapNotNull null
+                                            val total = (metadata["purchaseTotal"] as? Number)?.toDouble()?.takeIf { it.isFinite() && it > 0.0 } ?: return@mapNotNull null
+                                            val count = (metadata["packageCount"] as? String)?.toDoubleOrNull()?.takeIf { it > 0.0 } ?: return@mapNotNull null
+                                            val occurredAt = (event["occurredAt"] as? Number)?.toLong() ?: 0L
+                                            occurredAt to (total / count)
+                                        }.sortedBy { it.first }.takeLast(12).map { it.second }
+                                        purchasePriceHistoryByItem[doc.id] = history
+                                        pantryItems = pantryItems.map { item ->
+                                            if (item.id == doc.id) item.copy(purchasePriceHistory = history) else item
+                                        }
+                                    }
+                            }
+                        }
                         val items = snapshot.documents.mapNotNull { doc ->
-                            val lowStockThreshold = doc.getDouble("lowStockThreshold") ?: doc.getLong("lowStockThreshold")?.toDouble() ?: 1.0
-                            val quantity = doc.getDouble("quantity") ?: doc.getLong("quantity")?.toDouble() ?: 0.0
-                            val price = doc.getDouble("price") ?: 0.0
-                            val name = doc.getString("name") ?: ""
-                            val unit = doc.getString("unit") ?: "Units"
+                            val pantryItem = pantryItemFromMap(
+                                doc.id,
+                                doc.data.orEmpty(),
+                                UserPreferences.getDefaultInventoryStep(context).toDouble()
+                            )
+                            val lowStockThreshold = pantryItem.lowStockThreshold
+                            val quantity = pantryItem.quantity
+                            val name = pantryItem.name
+                            val unit = pantryItem.unit
 
                             val lastNotifiedQty = UserPreferences.getLastNotifiedStock(context, doc.id)
-                            val isNowLow = quantity <= lowStockThreshold
+                            val notificationEstimate = pantryItem.estimateAt(System.currentTimeMillis())
+                            val notificationQuantity = notificationEstimate.daysRemaining ?: notificationEstimate.totalRemaining ?: quantity
+                            val predictsDays = PantryTrackingMode.fromStored(pantryItem.trackingMode) in setOf(PantryTrackingMode.CONSUMPTION, PantryTrackingMode.ACTIVITY)
+                            val notificationThreshold = if (predictsDays) pantryItem.restockLeadDays else lowStockThreshold
+                            val notificationUnit = if (predictsDays) "days" else unit
+                            val isNowLow = pantryItem.isRunningLow(System.currentTimeMillis())
 
-                            if (isNowLow) {
-                                if (lastNotifiedQty == null || quantity < lastNotifiedQty) {
-                                    UserPreferences.saveLastNotifiedStock(context, doc.id, quantity)
+                            if (isNowLow && UserPreferences.isLowStockAlertsEnabled(context) && NotificationHelper.hasNotificationPermission(context)) {
+                                if (UserPreferences.claimLowStockNotification(context, doc.id, notificationQuantity)) {
                                     NotificationHelper.showLowStockNotification(
                                         context = context,
                                         itemName = name,
-                                        quantity = quantity,
-                                        unit = unit
+                                        quantity = notificationQuantity,
+                                        unit = notificationUnit
                                     )
                                 }
-                            } else {
-                                if (lastNotifiedQty != null && lastNotifiedQty <= lowStockThreshold) {
+                            } else if (isNowLow && !UserPreferences.isLowStockAlertsEnabled(context)) {
+                                // Keep the baseline current while alerts are off so re-enabling
+                                // them does not send stale notifications for old stock levels.
+                                UserPreferences.claimLowStockNotification(context, doc.id, notificationQuantity)
+                            } else if (!isNowLow) {
+                                if (lastNotifiedQty != null && lastNotifiedQty <= notificationThreshold) {
                                     UserPreferences.saveLastNotifiedStock(context, doc.id, Double.MAX_VALUE)
                                 }
                             }
-
-                            PantryItem(
-                                id = doc.id,
-                                name = name,
-                                category = doc.getString("category") ?: "",
-                                quantity = quantity,
-                                unit = unit,
-                                lowStockThreshold = lowStockThreshold,
-                                price = price,
-                                emoji = doc.getString("emoji")
-                            )
+                            pantryItem.copy(purchasePriceHistory = purchasePriceHistoryByItem[doc.id] ?: pantryItem.purchasePriceHistory)
                         }
                         pantryItems = items.sortedBy { it.name }
                     }
                 }
-
-
-
-
+            onDispose {
+                inventoryListener.remove()
+                purchaseListeners.values.forEach(ListenerRegistration::remove)
+                purchaseListeners.clear()
+            }
         }
     }
+
+    val appColors = com.example.pantry.ui.theme.LocalAppColors.current
 
     // Outer root container
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF090D16))
+            .background(appColors.background)
     ) {
 
         // LAYER 2: The interactive UI content sits OUTSIDE layerBackdrop:
@@ -171,25 +228,48 @@ fun DashboardScreen(
                         when (targetTab) {
                             0 -> PantryScreen(
                                 items = pantryItems,
+                                isLoading = pantryLoading,
+                                loadError = pantrySyncError,
+                                openItemId = pantryProductToOpen,
+                                onItemOpenHandled = { pantryProductToOpen = null },
+                                onFullScreenDestinationChange = { pantryFullScreenDestination = it },
                                 isDarkMode = isDarkMode,
                                 themePreference = currentUser.themePreference,
+                                defaultQuantityStep = UserPreferences.getDefaultInventoryStep(context).toDouble(),
                                 onItemUpdate = { updatedItem ->
                                     try {
                                         currentUser.householdId?.let { hid ->
-                                            val itemMap = hashMapOf<String, Any?>(
-                                                "name" to updatedItem.name,
-                                                "category" to updatedItem.category,
-                                                "quantity" to updatedItem.quantity,
-                                                "unit" to updatedItem.unit,
-                                                "lowStockThreshold" to updatedItem.lowStockThreshold,
-                                                "price" to updatedItem.price,
-                                                "emoji" to updatedItem.emoji
-                                            )
                                             db.collection("households").document(hid)
                                                 .collection("inventory").document(updatedItem.id)
-                                                .set(itemMap, SetOptions.merge())
+                                                .set(updatedItem.toFirestoreMap(), SetOptions.merge())
+                                                .addOnFailureListener { error ->
+                                                    Toast.makeText(context, "Pantry settings not saved: ${error.localizedMessage ?: "check connection"}", Toast.LENGTH_LONG).show()
+                                                }
                                         }
-                                    } catch (_: Exception) {}
+                                    } catch (error: Exception) {
+                                        Toast.makeText(context, "Pantry settings not saved: ${error.localizedMessage ?: "check connection"}", Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                onInventoryEvent = { updatedItem, events ->
+                                    currentUser.householdId?.let { hid ->
+                                        val previousItem = pantryItems.firstOrNull { it.id == updatedItem.id }
+                                        val stable = PantryTransition(updatedItem, events).withStableEventIds(previousItem)
+                                            ?: return@let
+                                        pantryItems = pantryItems.map { if (it.id == updatedItem.id) stable.item else it }
+                                        val itemRef = db.collection("households").document(hid)
+                                            .collection("inventory").document(updatedItem.id)
+                                        val batch = db.batch()
+                                        batch.set(itemRef, stable.item.toFirestoreMap(), SetOptions.merge())
+                                        stable.events.forEach { event ->
+                                            batch.set(itemRef.collection("events").document(event.id), event.toFirestoreMap())
+                                        }
+                                        batch.commit().addOnFailureListener { error ->
+                                            if (previousItem != null) {
+                                                pantryItems = pantryItems.map { if (it.id == updatedItem.id) previousItem else it }
+                                            }
+                                            Toast.makeText(context, "Pantry update not saved: ${error.localizedMessage ?: "check connection"}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
                                 },
                                 onItemDelete = { itemId ->
                                     try {
@@ -203,28 +283,69 @@ fun DashboardScreen(
                                 onAddItem = { newItem ->
                                     try {
                                         currentUser.householdId?.let { hid ->
-                                            val docRef = db.collection("households").document(hid).collection("inventory").document()
-                                            val itemMap = hashMapOf<String, Any?>(
-                                                "name" to newItem.name,
-                                                "category" to newItem.category,
-                                                "quantity" to newItem.quantity,
-                                                "unit" to newItem.unit,
-                                                "lowStockThreshold" to newItem.lowStockThreshold,
-                                                "price" to newItem.price,
-                                                "emoji" to newItem.emoji
-                                            )
-                                            docRef.set(itemMap, SetOptions.merge())
+                                            val docRef = db.collection("households").document(hid).collection("inventory").document(newItem.id)
+                                            docRef.set(newItem.toFirestoreMap(), SetOptions.merge())
                                         }
                                     } catch (_: Exception) {}
+                                },
+                                onAddInventoryItem = { newItem, events ->
+                                    currentUser.householdId?.let { hid ->
+                                        val itemRef = db.collection("households").document(hid)
+                                            .collection("inventory").document(newItem.id)
+                                        pantryItems = pantryItems + newItem
+                                        val batch = db.batch()
+                                        batch.set(itemRef, newItem.toFirestoreMap(), SetOptions.merge())
+                                        events.forEach { event ->
+                                            batch.set(itemRef.collection("events").document(event.id), event.toFirestoreMap())
+                                        }
+                                        batch.commit().addOnFailureListener { error ->
+                                            pantryItems = pantryItems.filterNot { it.id == newItem.id }
+                                            Toast.makeText(context, "Pantry item not saved: ${error.localizedMessage ?: "check connection"}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
                                 }
                             )
                             1 -> CalendarScreen(
                                 currentUser = currentUser,
-                                isDarkMode = isDarkMode
+                                isDarkMode = isDarkMode,
+                                forecastEvents = PantryForecastEngine.recommendations(pantryItems, forecastNowMillis)
+                                    .map { rec ->
+                                        CalendarEvent(
+                                            id = rec.id,
+                                            title = "Restock ${rec.productName}",
+                                            date = rec.suggestedDate.toString(),
+                                            time = "All day",
+                                            notes = "Estimated shopping suggestion. ${rec.reason}",
+                                            category = "Restock",
+                                            isForecast = true
+                                        )
+                                    }
                             )
                             2 -> BudgetScreen(
                                 currentUser = currentUser,
-                                isDarkMode = isDarkMode
+                                isDarkMode = isDarkMode,
+                                pantryItems = pantryItems,
+                                onViewPantryItem = { productId ->
+                                    pantryProductToOpen = productId
+                                    selectedTab = 0
+                                },
+                                onRecordPantryPurchase = { item, count ->
+                                    currentUser.householdId?.let { hid ->
+                                        val now = System.currentTimeMillis()
+                                        val eventId = "shopping-${item.id}-${java.time.LocalDate.now()}-$count"
+                                        val transition = item.addPurchasedPackages(count, now, eventId)
+                                        if (transition.events.isNotEmpty()) {
+                                            val itemRef = db.collection("households").document(hid)
+                                                .collection("inventory").document(item.id)
+                                            val batch = db.batch()
+                                            batch.set(itemRef, transition.item.toFirestoreMap(), SetOptions.merge())
+                                            transition.events.forEach { event -> batch.set(itemRef.collection("events").document(event.id), event.toFirestoreMap()) }
+                                            batch.commit().addOnFailureListener { error ->
+                                                Toast.makeText(context, "Purchase was not saved: ${error.localizedMessage ?: "check connection"}", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                }
                             )
                             3 -> HouseBoardScreen(
                                 currentUser = currentUser,
@@ -255,23 +376,17 @@ fun DashboardScreen(
         // Full-screen ProfileEditScreen overlay
         if (showProfileEditScreen) {
             ProfileEditScreen(
-                initialDisplayName = currentUser.name.ifBlank { "Bartont4432" },
-                initialRole = if (currentUser.role == Role.OWNER) "Household Owner" else if (currentUser.role == Role.ADMIN || currentUser.canManageHousehold) "Household Manager (Admin)" else "Member",
-                initialEmail = currentUser.email.ifBlank { "bartont4432@gmail.com" },
-                initialHouseholdGroup = "Main Household",
-                activeSyncDevices = "Galaxy Z Fold, Desktop Server, Tablet",
+                currentUser = currentUser,
                 onBack = { showProfileEditScreen = false },
-                onSaveChanges = { newName ->
-                    val updated = currentUser.copy(name = newName)
-                    onProfileUpdated(updated)
+                onSaveChanges = { updatedProfile ->
+                    onProfileUpdated(updatedProfile)
                     showProfileEditScreen = false
                 }
             )
         }
 
-        // Floating Solid Vector Bottom Bar
-        val appColors = com.example.pantry.ui.theme.LocalAppColors.current
-        Box(
+        // Keep the floating tab bar off full-screen overlays.
+        if (!showAboutVersionScreen && !showProfileEditScreen && !pantryFullScreenDestination) Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()

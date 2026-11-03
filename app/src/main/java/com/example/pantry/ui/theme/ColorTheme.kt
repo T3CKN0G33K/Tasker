@@ -92,6 +92,14 @@ val NewYearColors = AppThemeColors(
 
 val LocalAppColors = compositionLocalOf { DefaultObsidianColors }
 
+fun AppThemeColors.withLightAppearance(): AppThemeColors = copy(
+    background = Color(0xFFF5F7FB),
+    cardSurface = Color.White,
+    cardBorder = Color(0xFFE2E8F0),
+    textPrimary = Color(0xFF172033),
+    textSecondary = Color(0xFF64748B)
+)
+
 fun Modifier.themedCard(
     cornerRadius: Dp = 20.dp,
     borderWidth: Dp = 1.dp

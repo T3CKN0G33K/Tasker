@@ -112,15 +112,15 @@ object NotificationHelper {
             putExtra("target_screen", "pantry")
         }
 
-        val qtyStr = if (quantity % 1.0 == 0.0) quantity.toInt().toString() else quantity.toString()
+        val qtyStr = if (quantity % 1.0 == 0.0) quantity.toInt().toString() else String.format(java.util.Locale.US, "%.1f", quantity)
         val notificationId = ("low_stock_" + itemName).hashCode()
 
         postNotification(
             context = context,
             channelId = LOW_STOCK_CHANNEL_ID,
             notificationId = notificationId,
-            title = "Low Stock Alert: $itemName",
-            message = "$itemName is low in stock ($qtyStr $unit remaining). Tap to restock.",
+            title = "Restock reminder: $itemName",
+            message = if (unit == "days") "$itemName may run out in about $qtyStr days. Consider restocking." else "$itemName is at or below its saved stock threshold ($qtyStr $unit). Consider restocking.",
             intent = intent
         )
     }

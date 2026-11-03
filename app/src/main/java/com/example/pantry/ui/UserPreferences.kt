@@ -23,10 +23,12 @@ object UserPreferences {
     private const val KEY_HOUSEHOLD_ID = "household_id"
     private const val KEY_CAN_MANAGE = "can_manage_household"
     private const val KEY_DARK_MODE = "dark_mode"
+    private const val KEY_LOW_STOCK_ALERTS = "low_stock_alerts"
+    private const val KEY_DEFAULT_INVENTORY_STEP = "default_inventory_step"
     private const val KEY_THEME_PREFERENCE = "theme_preference"
-    private const val KEY_HAS_SEEDED_BANK_LEDGER = "has_seeded_bank_ledger"
     private const val KEY_NOTIFIED_UPDATE_VERSION = "notified_update_version"
     private const val PREF_STOCK_NOTIFIED_PREFIX = "stock_notified_"
+    private const val PREF_RESTOCK_SNOOZE_PREFIX = "restock_snooze_"
 
     private const val KEY_GLASS_ALPHA = "glass_alpha"
     private const val KEY_GLASS_BLUR = "glass_blur"
@@ -57,10 +59,10 @@ object UserPreferences {
     fun getUser(context: Context): UserProfile? {
         val prefs = getPrefs(context)
         val uid = prefs.getString(KEY_UID, null) ?: return null
-        val name = prefs.getString(KEY_NAME, "User") ?: "User"
+        val name = prefs.getString(KEY_NAME, "") ?: ""
         val email = prefs.getString(KEY_EMAIL, "") ?: ""
-        val roleStr = prefs.getString(KEY_ROLE, Role.OWNER.name) ?: Role.OWNER.name
-        val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.OWNER }
+        val roleStr = prefs.getString(KEY_ROLE, Role.MEMBER.name) ?: Role.MEMBER.name
+        val role = try { Role.valueOf(roleStr) } catch (_: Exception) { Role.MEMBER }
         val householdId = prefs.getString(KEY_HOUSEHOLD_ID, null)
         val canManage = prefs.getBoolean(KEY_CAN_MANAGE, false)
         val themePref = prefs.getString(KEY_THEME_PREFERENCE, "DEFAULT") ?: "DEFAULT"
@@ -76,13 +78,20 @@ object UserPreferences {
         return getPrefs(context).getBoolean(KEY_DARK_MODE, true)
     }
 
-    fun hasSeededBankLedger(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_HAS_SEEDED_BANK_LEDGER, false)
+    fun setLowStockAlertsEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_LOW_STOCK_ALERTS, enabled).apply()
     }
 
-    fun setBankLedgerSeeded(context: Context, seeded: Boolean = true) {
-        getPrefs(context).edit().putBoolean(KEY_HAS_SEEDED_BANK_LEDGER, seeded).apply()
+    fun isLowStockAlertsEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_LOW_STOCK_ALERTS, true)
+
+    fun setDefaultInventoryStep(context: Context, step: Float) {
+        val safeStep = step.coerceIn(0.1f, 100f)
+        getPrefs(context).edit().putFloat(KEY_DEFAULT_INVENTORY_STEP, safeStep).apply()
     }
+
+    fun getDefaultInventoryStep(context: Context): Float =
+        getPrefs(context).getFloat(KEY_DEFAULT_INVENTORY_STEP, 0.25f).coerceIn(0.1f, 100f)
 
     fun getLastNotifiedStock(context: Context, itemId: String): Double? {
         val prefs = getPrefs(context)
@@ -93,6 +102,23 @@ object UserPreferences {
     fun saveLastNotifiedStock(context: Context, itemId: String, quantity: Double) {
         val key = PREF_STOCK_NOTIFIED_PREFIX + itemId
         getPrefs(context).edit().putFloat(key, quantity.toFloat()).apply()
+    }
+
+    @Synchronized
+    fun claimLowStockNotification(context: Context, itemId: String, quantity: Double): Boolean {
+        val prefs = getPrefs(context)
+        val key = PREF_STOCK_NOTIFIED_PREFIX + itemId
+        val current = if (prefs.contains(key)) prefs.getFloat(key, Float.MAX_VALUE) else Float.MAX_VALUE
+        if (current < Float.MAX_VALUE / 2f) return false
+        prefs.edit().putFloat(key, quantity.toFloat()).commit()
+        return true
+    }
+
+    fun getRestockSnoozeUntil(context: Context, itemId: String): Long =
+        getPrefs(context).getLong(PREF_RESTOCK_SNOOZE_PREFIX + itemId, 0L)
+
+    fun snoozeRestock(context: Context, itemId: String, untilMillis: Long) {
+        getPrefs(context).edit().putLong(PREF_RESTOCK_SNOOZE_PREFIX + itemId, untilMillis).apply()
     }
 
     fun getLastNotifiedUpdateVersion(context: Context): String? {

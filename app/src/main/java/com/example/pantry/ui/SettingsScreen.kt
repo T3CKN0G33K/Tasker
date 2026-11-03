@@ -1,6 +1,9 @@
 package com.example.pantry.ui
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -14,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,15 +33,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tasker.R
+import com.example.tasker.BuildConfig
 import com.google.firebase.Firebase
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
+import org.json.JSONArray
+import org.json.JSONObject
+import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
+import java.util.Date
 
 @Composable
 fun SettingsScreen(
-    currentUser: UserProfile = UserProfile("123", "Alex Parker", "alex@example.com", Role.OWNER, "house_abc"),
+    currentUser: UserProfile,
     isDarkMode: Boolean = true,
     onToggleDarkMode: (Boolean) -> Unit = {},
     onProfileUpdated: (UserProfile) -> Unit = {},
@@ -47,469 +59,398 @@ fun SettingsScreen(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    var showEditProfileDialog by remember { mutableStateOf(false) }
     var showManageDialog by remember { mutableStateOf(false) }
     var showRemoveItemsDialog by remember { mutableStateOf(false) }
     var showFeedbackFeedDialog by remember { mutableStateOf(false) }
     var showSendFeedbackDialog by remember { mutableStateOf(false) }
     var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
-    var showAboutDialog by remember { mutableStateOf(false) }
+    var isExporting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val db = Firebase.firestore
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        val householdId = currentUser.householdId
+        if (uri != null && !householdId.isNullOrBlank()) {
+            isExporting = true
+            scope.launch {
+                try {
+                    val householdRef = db.collection("households").document(householdId)
+                    val backup = JSONObject()
+                    backup.put("exportedAt", System.currentTimeMillis())
+                    backup.put("householdId", householdId)
+                    backup.put("household", documentToJson(householdRef.get().await()))
+                    val collectionNames = listOf("inventory", "bills", "events", "calendar_events", "feedback", "tickets")
+                    for (collectionName in collectionNames) {
+                        val docs = householdRef.collection(collectionName).get().await().documents
+                        backup.put(collectionName, JSONArray().apply { docs.forEach { put(documentToJson(it)) } })
+                    }
+                    val budgets = householdRef.collection("budgets").get().await().documents
+                    backup.put("budgets", JSONArray().apply {
+                        budgets.forEach { budget ->
+                            val budgetJson = documentToJson(budget)
+                            val budgetBills = budget.reference.collection("bills").get().await().documents
+                            budgetJson.put("bills", JSONArray().apply { budgetBills.forEach { put(documentToJson(it)) } })
+                            put(budgetJson)
+                        }
+                    })
+                    context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(backup.toString(2)) }
+                        ?: error("Could not open the selected file")
+                    Toast.makeText(context, "Household backup saved.", Toast.LENGTH_LONG).show()
+                } catch (error: Exception) {
+                    Toast.makeText(context, "Backup failed: ${error.localizedMessage ?: "try again"}", Toast.LENGTH_LONG).show()
+                } finally {
+                    isExporting = false
+                }
+            }
+        }
+    }
 
     val isAdminOrOwner = currentUser.role == Role.OWNER ||
             currentUser.role == Role.ADMIN ||
-            currentUser.canManageHousehold ||
-            currentUser.email.contains("bacon3218", ignoreCase = true) ||
-            currentUser.name.contains("bacon3218", ignoreCase = true)
+            currentUser.canManageHousehold
 
     // Household & Restock Rules State
-    var lowStockAlertsEnabled by remember { mutableStateOf(true) }
-    var stepperStepValue by remember { mutableStateOf("0.25") }
+    var lowStockAlertsEnabled by remember(currentUser.uid) {
+        mutableStateOf(UserPreferences.isLowStockAlertsEnabled(context))
+    }
+    var stepperStepValue by remember(currentUser.uid) {
+        mutableFloatStateOf(UserPreferences.getDefaultInventoryStep(context))
+    }
+    var showStepperOptions by remember { mutableStateOf(false) }
+
+    val appColors = com.example.pantry.ui.theme.LocalAppColors.current
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(com.example.pantry.ui.theme.LocalAppColors.current.background)
+            .background(appColors.background)
     ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 20.dp),
-            contentPadding = PaddingValues(top = 48.dp, bottom = 120.dp)
+            contentPadding = PaddingValues(top = 34.dp, bottom = 132.dp),
+            verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
-            // Top App Bar
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Settings",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White,
-                        letterSpacing = (-0.5).sp
-                    )
-
-                    // Version Badge (Clickable -> Directly calls onOpenAbout())
+                    Column {
+                        Text(
+                            text = "Settings",
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = appColors.textPrimary,
+                            letterSpacing = (-0.6).sp
+                        )
+                        Text(
+                            text = "Your account and household preferences",
+                            fontSize = 13.sp,
+                            color = appColors.textSecondary
+                        )
+                    }
                     Surface(
-                        shape = RoundedCornerShape(19.dp),
-                        color = Color(0xFF0F172A).copy(alpha = 0.8f),
-                        border = BorderStroke(1.2.dp, Color(0xFF334155)),
-                        modifier = Modifier.clickable { onOpenAbout() }
+                        onClick = onOpenAbout,
+                        shape = RoundedCornerShape(14.dp),
+                        color = appColors.cardSurface,
+                        border = BorderStroke(1.dp, appColors.cardBorder)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF10B981))
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "v1.29",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+                        Text(
+                            text = "About  ·  ${BuildConfig.VERSION_NAME}",
+                            color = appColors.primaryAccent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                        )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(20.dp))
             }
 
-            // User Profile Header Glass Card
             item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    color = Color.Transparent,
-                    border = BorderStroke(1.2.dp, Color(0xFF38BDF8).copy(alpha = 0.30f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color(0xFF1E293B).copy(alpha = 0.80f),
-                                        Color(0xFF0F172A).copy(alpha = 0.90f)
-                                    )
-                                )
-                            )
-                            .padding(16.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SettingsSectionHeading("ACCOUNT")
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(22.dp),
+                        color = appColors.cardSurface,
+                        border = BorderStroke(1.dp, appColors.cardBorder)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Avatar Badge with Online Indicator
-                            Box(contentAlignment = Alignment.BottomEnd) {
+                        Column(Modifier.padding(18.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
                                         .size(56.dp)
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(
-                                            Brush.linearGradient(
-                                                listOf(Color(0xFF2563EB), Color(0xFF38BDF8))
-                                            )
-                                        ),
+                                        .clip(CircleShape)
+                                        .background(appColors.primaryAccent.copy(alpha = 0.18f)),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = currentUser.name.firstOrNull()?.uppercase() ?: "A",
+                                        text = currentUser.name.trim().firstOrNull()?.uppercase() ?: "?",
+                                        color = appColors.primaryAccent,
                                         fontSize = 22.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF10B981))
-                                        .border(2.dp, Color(0xFF0F172A), CircleShape)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(14.dp))
-
-                            // Details & Role Badge
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Spacer(Modifier.width(14.dp))
+                                Column(Modifier.weight(1f)) {
                                     Text(
-                                        text = currentUser.name.ifBlank { "Alex Parker" },
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        text = currentUser.name.ifBlank { "Name not set" },
+                                        color = appColors.textPrimary,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.SemiBold
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    val roleColor = when {
-                                        currentUser.role == Role.OWNER -> Color(0xFFFF9500)
-                                        currentUser.role == Role.ADMIN || currentUser.canManageHousehold -> Color(0xFF34C759)
-                                        else -> Color(0xFF007AFF)
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(50))
-                                            .background(roleColor.copy(alpha = 0.20f))
-                                            .border(0.5.dp, roleColor.copy(alpha = 0.40f), RoundedCornerShape(50))
-                                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = if (currentUser.role == Role.OWNER) "OWNER" else if (currentUser.role == Role.ADMIN || currentUser.canManageHousehold) "ADMIN" else "MEMBER",
-                                            color = roleColor,
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        text = currentUser.email.ifBlank { "Email not set" },
+                                        color = appColors.textSecondary,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = appColors.primaryAccent.copy(alpha = 0.12f)
+                                ) {
+                                    Text(
+                                        text = when {
+                                            currentUser.role == Role.OWNER -> "Owner"
+                                            currentUser.role == Role.ADMIN || currentUser.canManageHousehold -> "Admin"
+                                            else -> "Member"
+                                        },
+                                        color = appColors.primaryAccent,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(16.dp))
+                            OutlinedButton(
+                                onClick = onOpenProfileEdit,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, appColors.cardBorder),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = appColors.textPrimary)
+                            ) {
+                                Text("Edit profile")
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SettingsSectionHeading("HOUSEHOLD")
+                    SettingsGroupContainer {
+                        if (isAdminOrOwner) {
+                            SettingsActionRow(
+                                icon = "👥",
+                                iconBg = appColors.primaryAccent.copy(alpha = 0.14f),
+                                title = "Members",
+                                subtitle = "View household members and roles",
+                                trailingContent = { SettingsChevron(appColors.textSecondary) },
+                                onClick = {
+                                    if (currentUser.householdId.isNullOrBlank()) {
+                                        Toast.makeText(context, "Join a household first.", Toast.LENGTH_SHORT).show()
+                                    } else showManageDialog = true
+                                }
+                            )
+                            SettingsDivider()
+                        }
+                        SettingsActionRow(
+                            icon = "🔗",
+                            iconBg = Color(0xFF0284C7).copy(alpha = 0.14f),
+                            title = "Invite someone",
+                            subtitle = "Copy a link to join your household",
+                            trailingContent = { SettingsChevron(appColors.textSecondary) },
+                            onClick = {
+                                val householdId = currentUser.householdId
+                                if (householdId.isNullOrBlank()) {
+                                    Toast.makeText(context, "Join a household before inviting members.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    clipboardManager.setText(AnnotatedString("app://pantry/join/$householdId"))
+                                    Toast.makeText(context, "Invite link copied.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
+                        SettingsDivider()
+                        SettingsActionRow(
+                            icon = "#️⃣",
+                            iconBg = Color(0xFF10B981).copy(alpha = 0.14f),
+                            title = "Household ID",
+                            subtitle = currentUser.householdId ?: "No household linked",
+                            trailingContent = { SettingsChevron(appColors.textSecondary) },
+                            onClick = {
+                                val householdId = currentUser.householdId
+                                if (householdId.isNullOrBlank()) {
+                                    Toast.makeText(context, "No household ID is available.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    clipboardManager.setText(AnnotatedString(householdId))
+                                    Toast.makeText(context, "Household ID copied.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
+                        if (isAdminOrOwner) {
+                            SettingsDivider()
+                            SettingsActionRow(
+                                icon = "💬",
+                                iconBg = Color(0xFF8B5CF6).copy(alpha = 0.14f),
+                                title = "Household feedback",
+                                subtitle = "Review requests and ideas from members",
+                                trailingContent = { SettingsChevron(appColors.textSecondary) },
+                                onClick = { showFeedbackFeedDialog = true }
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SettingsSectionHeading("PREFERENCES")
+                    SettingsGroupContainer {
+                        SettingsToggleRow(
+                            icon = "🌓",
+                            iconBg = Color(0xFF6366F1).copy(alpha = 0.14f),
+                            title = "Dark mode",
+                            subtitle = "Use the dark appearance",
+                            checked = isDarkMode,
+                            onCheckedChange = { enabled ->
+                                UserPreferences.saveDarkMode(context, enabled)
+                                onToggleDarkMode(enabled)
+                            }
+                        )
+                        SettingsDivider()
+                        SettingsToggleRow(
+                            icon = "🔔",
+                            iconBg = Color(0xFFF59E0B).copy(alpha = 0.14f),
+                            title = "Low-stock alerts",
+                            subtitle = "Notify when an item reaches its threshold",
+                            checked = lowStockAlertsEnabled,
+                            onCheckedChange = { enabled ->
+                                lowStockAlertsEnabled = enabled
+                                UserPreferences.setLowStockAlertsEnabled(context, enabled)
+                            }
+                        )
+                        SettingsDivider()
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SettingsIconBadge("⚖️", Color(0xFF8B5CF6).copy(alpha = 0.14f))
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Default quantity increment", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = appColors.textPrimary)
+                                Text("Used for new items; set each item in Edit", fontSize = 12.sp, color = appColors.textSecondary)
+                            }
+                            Box {
+                                OutlinedButton(
+                                    onClick = { showStepperOptions = true },
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                    border = BorderStroke(1.dp, appColors.cardBorder),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = appColors.textPrimary)
+                                ) {
+                                    Text("${stepperStepValue}")
+                                }
+                                DropdownMenu(expanded = showStepperOptions, onDismissRequest = { showStepperOptions = false }) {
+                                    listOf(0.25f, 0.5f, 1.0f).forEach { step ->
+                                        DropdownMenuItem(
+                                            text = { Text(if (step == 1f) "1" else step.toString()) },
+                                            onClick = {
+                                                stepperStepValue = step
+                                                UserPreferences.setDefaultInventoryStep(context, step)
+                                                showStepperOptions = false
+                                            }
                                         )
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "${currentUser.email.ifBlank { "alex@example.com" }} • Main Household",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-
-                            // Edit Action Pill
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF1E293B),
-                                border = BorderStroke(1.dp, Color(0xFF334155)),
-                                modifier = Modifier.clickable { onOpenProfileEdit() }
-                            ) {
-                                Text(
-                                    text = "Edit",
-                                    color = Color(0xFF38BDF8),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                                )
                             }
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(26.dp))
             }
 
-            // Section 1: Admin Controls (Exclusively for OWNER / ADMIN)
-            if (isAdminOrOwner) {
-                item {
-                    Text(
-                        text = "ADMIN CONTROLS",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFF9500),
-                        letterSpacing = 0.8.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SettingsSectionHeading("DATA & SUPPORT")
                     SettingsGroupContainer {
                         SettingsActionRow(
-                            icon = "🏠",
-                            iconBg = Color(0xFFFF9500).copy(alpha = 0.20f),
-                            title = "Manage Household & Member Roles",
-                            subtitle = "Manage members, permissions & invites",
-                            trailingContent = { Text("▸", color = Color(0xFF64748B), fontSize = 16.sp) },
-                            onClick = { showManageDialog = true }
+                            icon = "💾",
+                            iconBg = Color(0xFF0284C7).copy(alpha = 0.14f),
+                            title = "Export household data",
+                            subtitle = if (isExporting) "Preparing your backup…" else "Save a JSON backup to a file",
+                            trailingContent = { SettingsChevron(appColors.textSecondary) },
+                            onClick = {
+                                if (currentUser.householdId.isNullOrBlank()) {
+                                    Toast.makeText(context, "Join a household before exporting its data.", Toast.LENGTH_SHORT).show()
+                                } else if (!isExporting) {
+                                    exportLauncher.launch("pantry-household-backup.json")
+                                }
+                            }
                         )
-
                         SettingsDivider()
-
                         SettingsActionRow(
-                            icon = "🗑️",
-                            iconBg = Color(0xFFFF3B30).copy(alpha = 0.20f),
-                            title = "Remove All Low Stock Items",
-                            subtitle = "Purge empty and low stock inventory",
-                            trailingContent = { Text("▸", color = Color(0xFF64748B), fontSize = 16.sp) },
-                            onClick = { showRemoveItemsDialog = true }
+                            icon = "✉️",
+                            iconBg = Color(0xFF8B5CF6).copy(alpha = 0.14f),
+                            title = "Send feedback",
+                            subtitle = "Report a problem or suggest an improvement",
+                            trailingContent = { SettingsChevron(appColors.textSecondary) },
+                            onClick = { showSendFeedbackDialog = true }
                         )
-                    }
-
-                    Spacer(modifier = Modifier.height(26.dp))
-                }
-            }
-
-            // Section 2: Household & Sharing
-            item {
-                Text(
-                    text = "HOUSEHOLD & SHARING",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF64748B),
-                    letterSpacing = 0.8.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                SettingsGroupContainer {
-                    if (isAdminOrOwner) {
-                        SettingsActionRow(
-                            icon = "💬",
-                            iconBg = Color(0xFF5856D6).copy(alpha = 0.20f),
-                            title = "Household Feedback Feed",
-                            subtitle = "Review member requests & ideas",
-                            trailingContent = { Text("▸", color = Color(0xFF64748B), fontSize = 16.sp) },
-                            onClick = { showFeedbackFeedDialog = true }
-                        )
-
                         SettingsDivider()
+                        SettingsActionRow(
+                            icon = "🛡️",
+                            iconBg = Color(0xFF10B981).copy(alpha = 0.14f),
+                            title = "Privacy & data",
+                            subtitle = "See what household data is stored",
+                            trailingContent = { SettingsChevron(appColors.textSecondary) },
+                            onClick = { showPrivacyPolicyDialog = true }
+                        )
+                        SettingsDivider()
+                        SettingsActionRow(
+                            icon = "⬆️",
+                            iconBg = Color(0xFF0EA5E9).copy(alpha = 0.14f),
+                            title = "Check for updates",
+                            subtitle = "Look for a newer app version",
+                            trailingContent = { SettingsChevron(appColors.textSecondary) },
+                            onClick = { AppUpdateManager.checkForUpdates(context, forceShowToast = true) {} }
+                        )
                     }
-
-                    SettingsActionRow(
-                        icon = "🔗",
-                        iconBg = Color(0xFF007AFF).copy(alpha = 0.20f),
-                        title = "Share Invite Link",
-                        subtitle = "Invite members with deep link",
-                        trailingContent = { Text("▸", color = Color(0xFF64748B), fontSize = 16.sp) },
-                        onClick = {
-                            val inviteLink = "app://pantry/join/${currentUser.householdId}"
-                            clipboardManager.setText(AnnotatedString(inviteLink))
-                            Toast.makeText(context, "Invite link copied to clipboard!", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-
-                    SettingsDivider()
-
-                    SettingsActionRow(
-                        icon = "📋",
-                        iconBg = Color(0xFF34C759).copy(alpha = 0.20f),
-                        title = "Copy Household ID",
-                        subtitle = currentUser.householdId ?: "house_abc",
-                        trailingContent = { Text("▸", color = Color(0xFF64748B), fontSize = 16.sp) },
-                        onClick = {
-                            val hid = currentUser.householdId ?: "house_abc"
-                            clipboardManager.setText(AnnotatedString(hid))
-                            Toast.makeText(context, "Household ID copied: $hid", Toast.LENGTH_SHORT).show()
-                        }
-                    )
                 }
-
-                Spacer(modifier = Modifier.height(26.dp))
             }
 
-            // Section 3: Restock & Sync Rules
-            item {
-                Text(
-                    text = "RESTOCK & SYNC RULES",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF64748B),
-                    letterSpacing = 0.8.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                SettingsGroupContainer {
-                    // Dark Mode Toggle
-                    SettingsToggleRow(
-                        icon = "🌓",
-                        iconBg = Color(0xFF007AFF).copy(alpha = 0.20f),
-                        title = "Dark Mode",
-                        subtitle = "Switch between dark and light theme",
-                        checked = isDarkMode,
-                        onCheckedChange = { isChecked ->
-                            UserPreferences.saveDarkMode(context, isChecked)
-                            onToggleDarkMode(isChecked)
-                        }
-                    )
-
-                    SettingsDivider()
-
-                    // Low Stock Alerts
-                    SettingsToggleRow(
-                        icon = "🔔",
-                        iconBg = Color(0xFFF59E0B).copy(alpha = 0.15f),
-                        title = "Low Stock Push Alerts",
-                        subtitle = "Notify when essentials hit min value",
-                        checked = lowStockAlertsEnabled,
-                        onCheckedChange = { lowStockAlertsEnabled = it }
-                    )
-
-                    SettingsDivider()
-
-                    // Fractional Stepper Step
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SettingsIconBadge(icon = "⚖️", bg = Color(0xFF8B5CF6).copy(alpha = 0.15f))
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Fractional Stepper Step",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = "Default ±0.25 on pet bags / boxes",
-                                fontSize = 11.sp,
-                                color = Color(0xFF94A3B8)
-                            )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(13.dp),
-                            color = Color(0xFF1E293B),
-                            border = BorderStroke(1.dp, Color(0xFF334155))
-                        ) {
-                            Text(
-                                text = stepperStepValue,
-                                color = Color(0xFF38BDF8),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            if (isAdminOrOwner) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SettingsSectionHeading("ADMIN TOOLS")
+                        SettingsGroupContainer {
+                            SettingsActionRow(
+                                icon = "🗑️",
+                                iconBg = Color(0xFFEF4444).copy(alpha = 0.14f),
+                                title = "Remove low-stock items",
+                                subtitle = "Permanently delete empty and low-stock inventory",
+                                trailingContent = { SettingsChevron(Color(0xFFEF4444)) },
+                                onClick = { showRemoveItemsDialog = true }
                             )
                         }
                     }
-
-                    SettingsDivider()
-
-                    // Send App Feedback
-                    SettingsActionRow(
-                        icon = "💬",
-                        iconBg = Color(0xFF5856D6).copy(alpha = 0.15f),
-                        title = "Send App Feedback",
-                        subtitle = "Submit bugs or feature requests",
-                        trailingContent = { Text("▸", color = Color(0xFF64748B), fontSize = 16.sp) },
-                        onClick = { showSendFeedbackDialog = true }
-                    )
                 }
-
-                Spacer(modifier = Modifier.height(26.dp))
             }
 
-            // Section 4: Data, Storage & About
             item {
-                Text(
-                    text = "DATA, STORAGE & ABOUT",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF64748B),
-                    letterSpacing = 0.8.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-
-                SettingsGroupContainer {
-                    // Export JSON Backup
-                    SettingsActionRow(
-                        icon = "💾",
-                        iconBg = Color(0xFF0284C7).copy(alpha = 0.15f),
-                        title = "Export Local JSON Backup",
-                        subtitle = "Save offline copy to phone storage",
-                        trailingContent = { Text("▸", color = Color(0xFF64748B), fontSize = 16.sp) },
-                        onClick = { Toast.makeText(context, "Exporting local backup...", Toast.LENGTH_SHORT).show() }
-                    )
-
-                    SettingsDivider()
-
-                    // Force Cloud Firestore Sync
-                    SettingsActionRow(
-                        icon = "☁️",
-                        iconBg = Color(0xFF10B981).copy(alpha = 0.15f),
-                        title = "Force Cloud Firestore Sync",
-                        subtitle = "Last sync: 2 mins ago",
-                        trailingContent = { Text("↻", color = Color(0xFF38BDF8), fontSize = 18.sp, fontWeight = FontWeight.Bold) },
-                        onClick = { Toast.makeText(context, "Cloud Firestore sync forced!", Toast.LENGTH_SHORT).show() }
-                    )
-
-                    SettingsDivider()
-
-                    // Check for Updates
-                    SettingsActionRow(
-                        icon = "🔄",
-                        iconBg = Color(0xFF007AFF).copy(alpha = 0.15f),
-                        title = "Check for Updates",
-                        subtitle = "Check latest release build on GitHub",
-                        trailingContent = { Text("▸", color = Color(0xFF64748B), fontSize = 16.sp) },
-                        onClick = { AppUpdateManager.checkForUpdates(context, forceShowToast = true) {} }
-                    )
-
-                    SettingsDivider()
-
-                    // Privacy Policy
-                    SettingsActionRow(
-                        icon = "🛡️",
-                        iconBg = Color(0xFF34C759).copy(alpha = 0.15f),
-                        title = "Privacy Policy",
-                        subtitle = "Data handling & privacy terms",
-                        trailingContent = { Text("▸", color = Color(0xFF64748B), fontSize = 16.sp) },
-                        onClick = { showPrivacyPolicyDialog = true }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(28.dp))
-            }
-
-            // Danger Sign Out Action
-            item {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSignOut() },
-                    shape = RoundedCornerShape(18.dp),
-                    color = Color(0xFF7F1D1D).copy(alpha = 0.30f),
-                    border = BorderStroke(1.dp, Color(0xFFF87171).copy(alpha = 0.40f))
+                OutlinedButton(
+                    onClick = onSignOut,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.45f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFCA5A5))
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Sign Out of Household",
-                            color = Color(0xFFFCA5A5),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Text("Sign out")
                 }
             }
         }
@@ -523,21 +464,36 @@ fun SettingsScreen(
     if (showRemoveItemsDialog) {
         RemoveLowStockItemsDialog(currentUser = currentUser, onDismiss = { showRemoveItemsDialog = false })
     }
-
-    if (showEditProfileDialog) {
-        EditProfileDialog(
-            currentUser = currentUser,
-            onDismiss = { showEditProfileDialog = false },
-            onProfileUpdated = onProfileUpdated
-        )
+    if (showSendFeedbackDialog) {
+        SendFeedbackDialog(currentUser, onDismiss = { showSendFeedbackDialog = false })
+    }
+    if (showFeedbackFeedDialog) {
+        HouseholdFeedbackDialog(currentUser, onDismiss = { showFeedbackFeedDialog = false })
+    }
+    if (showPrivacyPolicyDialog) {
+        PrivacySummaryDialog(onDismiss = { showPrivacyPolicyDialog = false })
     }
 
-    if (showAboutDialog) {
-        AboutAppDialog(onDismiss = { showAboutDialog = false })
-    }
 }
 
 // Reusable Glass Setting Components
+
+@Composable
+private fun SettingsSectionHeading(title: String) {
+    val colors = com.example.pantry.ui.theme.LocalAppColors.current
+    Text(
+        text = title,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        color = colors.textSecondary,
+        letterSpacing = 0.8.sp
+    )
+}
+
+@Composable
+private fun SettingsChevron(color: Color) {
+    Text(text = "›", color = color, fontSize = 23.sp, lineHeight = 23.sp)
+}
 
 @Composable
 private fun SettingsGroupContainer(content: @Composable ColumnScope.() -> Unit) {
@@ -569,12 +525,12 @@ private fun SettingsGroupContainer(content: @Composable ColumnScope.() -> Unit) 
 private fun SettingsIconBadge(icon: String, bg: Color) {
     Box(
         modifier = Modifier
-            .size(32.dp)
-            .clip(CircleShape)
+            .size(38.dp)
+            .clip(RoundedCornerShape(13.dp))
             .background(bg),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = icon, fontSize = 16.sp)
+        Text(text = icon, fontSize = 17.sp)
     }
 }
 
@@ -587,6 +543,7 @@ private fun SettingsToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val appColors = com.example.pantry.ui.theme.LocalAppColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -598,14 +555,15 @@ private fun SettingsToggleRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = appColors.textPrimary
             )
             Text(
                 text = subtitle,
-                fontSize = 11.sp,
-                color = Color(0xFF94A3B8)
+                fontSize = 12.sp,
+                color = appColors.textSecondary,
+                lineHeight = 16.sp
             )
         }
         Switch(
@@ -613,9 +571,9 @@ private fun SettingsToggleRow(
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = Color(0xFF0284C7),
-                uncheckedThumbColor = Color(0xFF64748B),
-                uncheckedTrackColor = Color(0xFF0F172A)
+                checkedTrackColor = appColors.primaryAccent,
+                uncheckedThumbColor = appColors.textSecondary,
+                uncheckedTrackColor = appColors.background
             )
         )
     }
@@ -630,11 +588,12 @@ private fun SettingsActionRow(
     trailingContent: @Composable () -> Unit,
     onClick: () -> Unit
 ) {
+    val appColors = com.example.pantry.ui.theme.LocalAppColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         SettingsIconBadge(icon = icon, bg = iconBg)
@@ -642,14 +601,15 @@ private fun SettingsActionRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = appColors.textPrimary
             )
             Text(
                 text = subtitle,
-                fontSize = 11.sp,
-                color = Color(0xFF94A3B8)
+                fontSize = 12.sp,
+                color = appColors.textSecondary,
+                lineHeight = 16.sp
             )
         }
         trailingContent()
@@ -658,10 +618,11 @@ private fun SettingsActionRow(
 
 @Composable
 private fun SettingsDivider() {
+    val appColors = com.example.pantry.ui.theme.LocalAppColors.current
     HorizontalDivider(
-        modifier = Modifier.padding(start = 62.dp, end = 16.dp),
+        modifier = Modifier.padding(start = 68.dp, end = 16.dp),
         thickness = 0.8.dp,
-        color = Color(0xFF334155)
+        color = appColors.cardBorder.copy(alpha = 0.75f)
     )
 }
 
@@ -697,12 +658,13 @@ fun EditProfileDialog(
     var name by remember { mutableStateOf(currentUser.name) }
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
-    var isUpdatingPassword by remember { mutableStateOf(false) }
+    var confirmPassword by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val db = Firebase.firestore
     val auth = Firebase.auth
+    val scope = rememberCoroutineScope()
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
@@ -737,7 +699,6 @@ fun EditProfileDialog(
                     value = currentPassword,
                     onValueChange = {
                         currentPassword = it
-                        isUpdatingPassword = true
                     },
                     label = { Text("Current Password", color = Color.Gray) },
                     singleLine = true,
@@ -756,9 +717,24 @@ fun EditProfileDialog(
                     value = newPassword,
                     onValueChange = {
                         newPassword = it
-                        isUpdatingPassword = true
                     },
                     label = { Text("New Password", color = Color.Gray) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedContainerColor = Color(0xFF2C2C2E),
+                        unfocusedContainerColor = Color(0xFF2C2C2E),
+                        focusedBorderColor = Color(0xFF007AFF),
+                        unfocusedBorderColor = Color.Gray
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it },
+                    label = { Text("Confirm New Password", color = Color.Gray) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
@@ -775,48 +751,44 @@ fun EditProfileDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val passwordRequested = currentPassword.isNotBlank() || newPassword.isNotBlank() || confirmPassword.isNotBlank()
+                    if (name.isBlank()) {
+                        Toast.makeText(context, "Name cannot be empty.", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    if (passwordRequested && (currentPassword.isBlank() || newPassword.length < 6 || confirmPassword.isBlank())) {
+                        Toast.makeText(context, "Enter your current password and a new password of at least 6 characters, then confirm it.", Toast.LENGTH_LONG).show()
+                        return@Button
+                    }
+                    if (passwordRequested && newPassword != confirmPassword) {
+                        Toast.makeText(context, "New password and confirmation do not match.", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    if (passwordRequested && (auth.currentUser?.email.isNullOrBlank())) {
+                        Toast.makeText(context, "Password changes are unavailable for this sign-in method.", Toast.LENGTH_LONG).show()
+                        return@Button
+                    }
                     isLoading = true
                     val updatedProfile = currentUser.copy(name = name.trim())
-                    db.collection("users").document(currentUser.uid)
-                        .set(updatedProfile, SetOptions.merge())
-                        .addOnSuccessListener {
-                            onProfileUpdated(updatedProfile)
-                            if (isUpdatingPassword && newPassword.length >= 6) {
-                                val user = auth.currentUser
-                                if (user != null && user.email != null) {
-                                    val credential = EmailAuthProvider.getCredential(user.email!!, currentPassword)
-                                    user.reauthenticate(credential)
-                                        .addOnSuccessListener {
-                                            user.updatePassword(newPassword)
-                                                .addOnSuccessListener {
-                                                    isLoading = false
-                                                    Toast.makeText(context, "Profile & Password Updated!", Toast.LENGTH_SHORT).show()
-                                                    onDismiss()
-                                                }
-                                                .addOnFailureListener { e ->
-                                                    isLoading = false
-                                                    Toast.makeText(context, "Password Update Failed: ${e.message}", Toast.LENGTH_LONG).show()
-                                                }
-                                        }
-                                        .addOnFailureListener {
-                                            isLoading = false
-                                            Toast.makeText(context, "Incorrect current password.", Toast.LENGTH_LONG).show()
-                                        }
-                                } else {
-                                    isLoading = false
-                                    Toast.makeText(context, "Profile Updated!", Toast.LENGTH_SHORT).show()
-                                    onDismiss()
-                                }
-                            } else {
-                                isLoading = false
-                                Toast.makeText(context, "Profile Updated!", Toast.LENGTH_SHORT).show()
-                                onDismiss()
+                    scope.launch {
+                        try {
+                            if (passwordRequested) {
+                                val user = auth.currentUser ?: error("Please sign in again before changing your password.")
+                                val email = user.email ?: error("Password changes are unavailable for this sign-in method.")
+                                user.reauthenticate(EmailAuthProvider.getCredential(email, currentPassword)).await()
+                                user.updatePassword(newPassword).await()
                             }
-                        }
-                        .addOnFailureListener { e ->
+                            db.collection("users").document(currentUser.uid)
+                                .set(updatedProfile, SetOptions.merge()).await()
+                            onProfileUpdated(updatedProfile)
+                            Toast.makeText(context, if (passwordRequested) "Profile and password updated." else "Profile updated.", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        } catch (error: Exception) {
+                            Toast.makeText(context, "Couldn't update profile: ${error.localizedMessage ?: "try again"}", Toast.LENGTH_LONG).show()
+                        } finally {
                             isLoading = false
-                            Toast.makeText(context, "Failed to update profile: ${e.message}", Toast.LENGTH_LONG).show()
                         }
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF)),
                 enabled = !isLoading
@@ -878,7 +850,7 @@ fun AboutAppDialog(
                         .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.3f), RoundedCornerShape(20.dp))
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
-                    Text("v1.28.4 (Build 128)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8))
+                    Text("v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF38BDF8))
                 }
                 Text("Engine & Appearance • Restock & Sync Rules • Data & Storage", fontSize = 11.sp, color = Color.Gray)
             }
@@ -903,21 +875,23 @@ fun ManageHouseholdDialog(
     var members by remember { mutableStateOf<List<UserProfile>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
-    val householdId = currentUser.householdId ?: "house_abc"
+    val householdId = currentUser.householdId?.takeIf { it.isNotBlank() } ?: return
 
-    // Real-time Cloud Firestore Query: Get ALL members in the household
-    LaunchedEffect(householdId) {
-        db.collection("users")
-            .whereEqualTo("householdId", householdId)
+    // Read the household-scoped member directory. Listing the global users
+    // collection is intentionally denied by many Firestore security rules.
+    DisposableEffect(householdId) {
+        val registration = db.collection("households")
+            .document(householdId)
+            .collection("members")
             .addSnapshotListener { snapshot, error ->
                 isLoading = false
                 if (error != null) {
-                    Toast.makeText(context, "Error loading members: ${error.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Couldn't load household members: ${error.localizedMessage ?: "permission denied"}", Toast.LENGTH_LONG).show()
                     return@addSnapshotListener
                 }
                 if (snapshot != null) {
                     val memberList = snapshot.documents.mapNotNull { doc ->
-                        val uid = doc.id
+                        val uid = doc.getString("uid") ?: doc.id
                         val name = doc.getString("name") ?: "Member"
                         val email = doc.getString("email") ?: ""
                         val roleStr = doc.getString("role") ?: "MEMBER"
@@ -939,6 +913,7 @@ fun ManageHouseholdDialog(
                     members = memberList.sortedBy { if (it.role == Role.OWNER) 0 else if (it.role == Role.ADMIN) 1 else 2 }
                 }
             }
+        onDispose { registration.remove() }
     }
 
     GlassBottomSheet(
@@ -1160,29 +1135,49 @@ fun RemoveLowStockItemsDialog(
 ) {
     val context = LocalContext.current
     val db = Firebase.firestore
+    val scope = rememberCoroutineScope()
+    var isRemoving by remember { mutableStateOf(false) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isRemoving) onDismiss() },
         confirmButton = {
             Button(
                 onClick = {
-                    currentUser.householdId?.let { hid ->
-                        db.collection("households").document(hid).collection("inventory")
-                            .whereLessThanOrEqualTo("quantity", 0.0)
-                            .get()
-                            .addOnSuccessListener { snapshot ->
-                                for (doc in snapshot.documents) {
-                                    doc.reference.delete()
-                                }
-                                Toast.makeText(context, "Low stock items removed!", Toast.LENGTH_SHORT).show()
-                                onDismiss()
+                    val hid = currentUser.householdId
+                    if (hid.isNullOrBlank() || isRemoving) {
+                        Toast.makeText(context, "Join a household before removing inventory.", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    isRemoving = true
+                    scope.launch {
+                        try {
+                            val snapshot = db.collection("households").document(hid)
+                                .collection("inventory").get().await()
+                            val lowStockDocs = snapshot.documents.filter { doc ->
+                                val quantity = (doc.get("currentQuantity") as? Number)?.toDouble()
+                                    ?: (doc.get("quantity") as? Number)?.toDouble()
+                                val threshold = (doc.get("alertThreshold") as? Number)?.toDouble()
+                                    ?: (doc.get("lowStockThreshold") as? Number)?.toDouble()
+                                    ?: 0.0
+                                quantity != null && quantity <= threshold
                             }
-                    } ?: onDismiss()
+                            lowStockDocs.chunked(450).forEach { docs ->
+                                db.runBatch { batch -> docs.forEach { batch.delete(it.reference) } }.await()
+                            }
+                            Toast.makeText(context, "Removed ${lowStockDocs.size} low-stock item(s).", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        } catch (error: Exception) {
+                            Toast.makeText(context, "Couldn't remove items: ${error.localizedMessage ?: "try again"}", Toast.LENGTH_LONG).show()
+                        } finally {
+                            isRemoving = false
+                        }
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3B30)),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                enabled = !isRemoving
             ) {
-                Text("Purge Items", color = Color.White, fontWeight = FontWeight.Bold)
+                Text(if (isRemoving) "Removing…" else "Remove Items", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -1191,12 +1186,176 @@ fun RemoveLowStockItemsDialog(
             }
         },
         title = {
-            Text("Purge Empty & Low Stock Items", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("Remove Low Stock Items", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
         },
         text = {
-            Text("Are you sure you want to delete all zero-quantity or empty items from this household's pantry?", color = Color.LightGray, fontSize = 13.sp)
+            Text("This permanently deletes every inventory item at or below its low-stock threshold, including empty items. Household data is shared with all members.", color = Color.LightGray, fontSize = 13.sp)
         },
         containerColor = Color(0xFF0F172A),
         shape = RoundedCornerShape(24.dp)
     )
+}
+
+@Composable
+private fun SendFeedbackDialog(currentUser: UserProfile, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var type by remember { mutableStateOf("FEATURE") }
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    val householdId = currentUser.householdId
+
+    AlertDialog(
+        onDismissRequest = { if (!sending) onDismiss() },
+        title = { Text("Send feedback", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Your message will be visible to household administrators.", color = Color.LightGray, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("FEATURE", "BUG").forEach { option ->
+                        FilterChip(
+                            selected = type == option,
+                            onClick = { type = option },
+                            label = { Text(if (option == "FEATURE") "Idea" else "Bug") }
+                        )
+                    }
+                }
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, singleLine = true)
+                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Details") }, minLines = 3)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !sending, onClick = {
+                if (householdId.isNullOrBlank()) {
+                    Toast.makeText(context, "Join a household before sending feedback.", Toast.LENGTH_SHORT).show()
+                    return@TextButton
+                }
+                if (title.isBlank() || description.isBlank()) {
+                    Toast.makeText(context, "Add a title and details first.", Toast.LENGTH_SHORT).show()
+                    return@TextButton
+                }
+                sending = true
+                scope.launch {
+                    try {
+                        val feedbackRef = Firebase.firestore.collection("households").document(householdId)
+                            .collection("feedback").document()
+                        feedbackRef.set(
+                            mapOf(
+                                "id" to feedbackRef.id,
+                                "authorRole" to if (currentUser.role == Role.OWNER) "Owner" else "Member",
+                                "type" to type,
+                                "title" to title.trim(),
+                                "description" to description.trim(),
+                                "status" to "SUBMITTED",
+                                "timestampText" to "Just Now",
+                                "submittedAt" to System.currentTimeMillis()
+                            )
+                        ).await()
+                        Toast.makeText(context, "Feedback sent.", Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    } catch (error: Exception) {
+                        Toast.makeText(context, "Couldn't send feedback: ${error.localizedMessage ?: "try again"}", Toast.LENGTH_LONG).show()
+                    } finally {
+                        sending = false
+                    }
+                }
+            }) { Text(if (sending) "Sending…" else "Send") }
+        },
+        dismissButton = { TextButton(enabled = !sending, onClick = onDismiss) { Text("Cancel") } },
+        containerColor = Color(0xFF0F172A),
+        titleContentColor = Color.White,
+        textContentColor = Color.LightGray
+    )
+}
+
+@Composable
+private fun HouseholdFeedbackDialog(currentUser: UserProfile, onDismiss: () -> Unit) {
+    val householdId = currentUser.householdId
+    var rows by remember { mutableStateOf<List<Map<String, Any?>>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(householdId) {
+        if (householdId.isNullOrBlank()) {
+            loading = false
+            errorText = "Join a household to view its feedback."
+            onDispose { }
+        } else {
+            val registration = Firebase.firestore.collection("households").document(householdId)
+                .collection("feedback").addSnapshotListener { snapshot, error ->
+                    loading = false
+                    if (error != null) {
+                        errorText = error.localizedMessage ?: "Unable to load feedback."
+                    } else if (snapshot != null) {
+                        errorText = null
+                        rows = snapshot.documents.map { it.data.orEmpty() + ("_docId" to it.id) }
+                            .sortedByDescending { (it["submittedAt"] as? Number)?.toLong() ?: 0L }
+                    }
+                }
+            onDispose { registration.remove() }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Household feedback", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            when {
+                loading -> CircularProgressIndicator()
+                errorText != null -> Text(errorText!!, color = Color.LightGray)
+                rows.isEmpty() -> Text("No feedback has been submitted yet.", color = Color.LightGray)
+                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.heightIn(max = 420.dp)) {
+                    items(rows.size) { index ->
+                        val row = rows[index]
+                        Column(Modifier.fillMaxWidth().background(Color(0xFF1E293B), RoundedCornerShape(12.dp)).padding(12.dp)) {
+                            Text(row["title"] as? String ?: "Untitled", color = Color.White, fontWeight = FontWeight.SemiBold)
+                            Text("${row["type"] ?: "FEEDBACK"} • ${row["authorRole"] ?: "Member"} • ${row["status"] ?: "SUBMITTED"}", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Text(row["description"] as? String ?: "", color = Color.LightGray, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        containerColor = Color(0xFF0F172A),
+        titleContentColor = Color.White,
+        textContentColor = Color.LightGray
+    )
+}
+
+@Composable
+private fun PrivacySummaryDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Privacy & data", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Pantry Tracker stores household app data in Firebase so signed-in household members can share it. This can include pantry inventory, bills and budget cycles, calendar events, and feedback.", color = Color.LightGray, fontSize = 13.sp)
+                Text("The app also stores settings on this device and may send local notifications when enabled. Use Sign Out to end this session. Household data is shared with members; contact the household owner for help managing it.", color = Color.LightGray, fontSize = 13.sp)
+                Text("Do not enter passwords or bank credentials in feedback or household notes.", color = Color(0xFFFBBF24), fontSize = 13.sp)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        containerColor = Color(0xFF0F172A),
+        titleContentColor = Color.White,
+        textContentColor = Color.LightGray
+    )
+}
+
+private fun documentToJson(document: DocumentSnapshot): JSONObject = JSONObject().apply {
+    put("id", document.id)
+    document.data.orEmpty().forEach { (key, value) -> put(key, jsonValue(value)) }
+}
+
+private fun jsonValue(value: Any?): Any? = when (value) {
+    null -> JSONObject.NULL
+    is Timestamp -> value.toDate().time
+    is Date -> value.time
+    is DocumentReference -> value.path
+    is Map<*, *> -> JSONObject().apply { value.forEach { (key, item) -> if (key is String) put(key, jsonValue(item)) } }
+    is Iterable<*> -> JSONArray().apply { value.forEach { put(jsonValue(it)) } }
+    is Array<*> -> JSONArray().apply { value.forEach { put(jsonValue(it)) } }
+    else -> value
 }

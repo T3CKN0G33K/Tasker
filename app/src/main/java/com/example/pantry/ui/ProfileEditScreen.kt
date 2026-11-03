@@ -1,414 +1,368 @@
 package com.example.pantry.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.firebase.Firebase
+import com.google.firebase.auth.EmailAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @Composable
 fun ProfileEditScreen(
-    initialDisplayName: String = "Bartont4432",
-    initialRole: String = "Household Manager (Admin)",
-    initialEmail: String = "bartont4432@gmail.com",
-    initialHouseholdGroup: String = "Main Household",
-    activeSyncDevices: String = "Galaxy Z Fold, Desktop Server, Tablet",
+    currentUser: UserProfile,
     onBack: () -> Unit = {},
-    onSaveChanges: (displayName: String) -> Unit = {},
-    onLeaveOrTransferHousehold: () -> Unit = {}
+    onSaveChanges: (UserProfile) -> Unit = {}
 ) {
-    var displayName by remember { mutableStateOf(initialDisplayName) }
+    var displayName by remember(currentUser.uid) { mutableStateOf(currentUser.name) }
+    var currentPassword by remember(currentUser.uid) { mutableStateOf("") }
+    var newPassword by remember(currentUser.uid) { mutableStateOf("") }
+    var confirmPassword by remember(currentUser.uid) { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val db = Firebase.firestore
+    val auth = Firebase.auth
+    val colors = com.example.pantry.ui.theme.LocalAppColors.current
+    val firebaseUser = auth.currentUser
+    val canChangePassword = firebaseUser?.providerData?.any {
+        it.providerId == EmailAuthProvider.PROVIDER_ID
+    } == true
+    val passwordChangeRequested = currentPassword.isNotBlank() || newPassword.isNotBlank() || confirmPassword.isNotBlank()
+    val roleLabel = when {
+        currentUser.role == Role.OWNER -> "Owner"
+        currentUser.role == Role.ADMIN || currentUser.canManageHousehold -> "Admin"
+        else -> "Member"
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF030712)) // Darkest canvas base
+            .background(colors.background)
     ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .padding(horizontal = 20.dp),
-            contentPadding = PaddingValues(top = 46.dp, bottom = 48.dp)
+            contentPadding = PaddingValues(top = 12.dp, bottom = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Header Bar: Back button, Screen Title, and Top Cancel Action
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(colors.cardSurface)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back to Settings",
+                            tint = colors.textPrimary
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Edit profile", color = colors.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        Text("Manage your account details", color = colors.textSecondary, fontSize = 13.sp)
+                    }
+                }
+            }
+
+            item {
+                ProfileSectionCard(colors = colors) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(58.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF1E293B).copy(alpha = 0.7f))
-                                .border(1.2.dp, Color(0xFF334155), CircleShape)
-                                .clickable { onBack() },
+                                .background(colors.primaryAccent.copy(alpha = 0.14f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "‹",
-                                color = Color(0xFFF8FAFC),
-                                fontSize = 26.sp,
+                                text = displayName.trim().firstOrNull()?.uppercase() ?: "?",
+                                color = colors.primaryAccent,
+                                fontSize = 24.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        Text(
-                            text = "Edit Profile",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                    }
-
-                    Text(
-                        text = "Cancel",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF94A3B8),
-                        modifier = Modifier.clickable { onBack() }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(26.dp))
-            }
-
-            // Avatar Change Hero Section
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(88.dp)
-                            .clip(RoundedCornerShape(30.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF2563EB), Color(0xFF38BDF8))
-                                )
-                            )
-                            .border(2.dp, Color(0xFF38BDF8).copy(alpha = 0.5f), RoundedCornerShape(30.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = displayName.firstOrNull()?.uppercase() ?: "B",
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = "Change Photo",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF38BDF8),
-                        modifier = Modifier.clickable { /* Photo Picker */ }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(28.dp))
-            }
-
-            // Editable Display Name Card
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color.Transparent,
-                    border = BorderStroke(1.2.dp, Color(0xFF38BDF8).copy(alpha = 0.35f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFF1E293B).copy(alpha = 0.85f), Color(0xFF0F172A).copy(alpha = 0.95f))
-                                )
-                            )
-                            .padding(18.dp)
-                    ) {
-                        Column {
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(displayName.ifBlank { "Your name" }, color = colors.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                            Text(currentUser.email.ifBlank { "No email on file" }, color = colors.textSecondary, fontSize = 13.sp)
+                        }
+                        Surface(shape = RoundedCornerShape(50), color = colors.primaryAccent.copy(alpha = 0.10f)) {
                             Text(
-                                text = "DISPLAY NAME",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF38BDF8),
-                                letterSpacing = 0.6.sp
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            OutlinedTextField(
-                                value = displayName,
-                                onValueChange = { displayName = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = Color(0xFF0F172A).copy(alpha = 0.8f),
-                                    unfocusedContainerColor = Color(0xFF0F172A).copy(alpha = 0.8f),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    focusedBorderColor = Color(0xFF38BDF8),
-                                    unfocusedBorderColor = Color(0xFF334155)
-                                ),
-                                singleLine = true
+                                text = roleLabel,
+                                color = colors.primaryAccent,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(14.dp))
             }
 
-            // Household Role (Read-Only)
             item {
-                ProfileMetaCard(
-                    label = "HOUSEHOLD ROLE",
-                    value = initialRole,
-                    trailingIcon = "🔒"
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-            }
-
-            // Linked Account Email (Read-Only)
-            item {
-                ProfileMetaCard(
-                    label = "LINKED ACCOUNT",
-                    value = initialEmail,
-                    trailingIcon = "🔒"
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-            }
-
-            // Household Group & Sync Telemetry
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color.Transparent,
-                    border = BorderStroke(1.dp, Color(0xFF334155).copy(alpha = 0.40f))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFF1E293B).copy(alpha = 0.80f), Color(0xFF0F172A).copy(alpha = 0.90f))
-                                )
-                            )
-                            .padding(18.dp)
-                    ) {
-                        Row(
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ProfileSectionHeading("PERSONAL INFORMATION", colors.textSecondary)
+                    ProfileSectionCard(colors = colors) {
+                        Text(
+                            text = "Display name",
+                            color = colors.textPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = displayName,
+                            onValueChange = { displayName = it },
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "HOUSEHOLD GROUP",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF64748B),
-                                    letterSpacing = 0.6.sp
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = initialHouseholdGroup,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF10B981).copy(alpha = 0.15f),
-                                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f))
-                            ) {
-                                Text(
-                                    text = "3 Online",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF34D399),
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-                        HorizontalDivider(thickness = 0.8.dp, color = Color(0xFF334155))
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Text(
-                            text = "Active Sync Devices",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF94A3B8)
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            placeholder = { Text("Enter your name") },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            colors = profileTextFieldColors(colors)
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(Modifier.height(6.dp))
                         Text(
-                            text = activeSyncDevices,
-                            fontSize = 12.sp,
-                            color = Color(0xFF64748B)
+                            text = "This name is shown to your household.",
+                            color = colors.textSecondary,
+                            fontSize = 12.sp
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(22.dp))
             }
 
-            // Leave or Transfer Household Danger Action
             item {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onLeaveOrTransferHousehold() },
-                    shape = RoundedCornerShape(18.dp),
-                    color = Color(0xFF7F1D1D).copy(alpha = 0.25f),
-                    border = BorderStroke(1.dp, Color(0xFFF87171).copy(alpha = 0.40f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 15.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ProfileSectionHeading("SIGN-IN", colors.textSecondary)
+                    ProfileSectionCard(colors = colors) {
+                        Text("Email address", color = colors.textSecondary, fontSize = 12.sp)
+                        Spacer(Modifier.height(3.dp))
+                        Text(currentUser.email.ifBlank { "Not available" }, color = colors.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "Leave or Transfer Household",
-                            color = Color(0xFFFCA5A5),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
+                            "Email address changes aren't supported on this page.",
+                            color = colors.textSecondary,
+                            fontSize = 12.sp
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(18.dp))
             }
 
-            // Save Changes CTA
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ProfileSectionHeading("PASSWORD", colors.textSecondary)
+                    ProfileSectionCard(colors = colors) {
+                        if (canChangePassword) {
+                            Text(
+                                "Leave these fields empty to keep your current password.",
+                                color = colors.textSecondary,
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            ProfilePasswordField("Current password", currentPassword, { currentPassword = it }, colors)
+                            Spacer(Modifier.height(10.dp))
+                            ProfilePasswordField("New password", newPassword, { newPassword = it }, colors)
+                            Spacer(Modifier.height(10.dp))
+                            ProfilePasswordField("Confirm new password", confirmPassword, { confirmPassword = it }, colors)
+                            if (passwordChangeRequested && newPassword.isNotEmpty() && newPassword.length < 6) {
+                                Spacer(Modifier.height(6.dp))
+                                Text("Use at least 6 characters.", color = Color(0xFFDC2626), fontSize = 12.sp)
+                            }
+                        } else {
+                            Text(
+                                "This account uses a sign-in provider that does not support password changes here.",
+                                color = colors.textSecondary,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ProfileSectionHeading("HOUSEHOLD", colors.textSecondary)
+                    ProfileSectionCard(colors = colors) {
+                        ProfileReadOnlyRow("Role", roleLabel, colors)
+                        HorizontalDivider(color = colors.cardBorder)
+                        ProfileReadOnlyRow("Household ID", currentUser.householdId ?: "Not linked", colors)
+                    }
+                }
+            }
+
             item {
                 Button(
                     onClick = {
-                        if (displayName.isNotBlank()) {
-                            onSaveChanges(displayName)
-                            onBack()
+                        val cleanName = displayName.trim()
+                        if (cleanName.isBlank()) {
+                            Toast.makeText(context, "Enter a display name.", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        if (passwordChangeRequested) {
+                            if (!canChangePassword || currentPassword.isBlank() || newPassword.length < 6 || confirmPassword.isBlank()) {
+                                Toast.makeText(context, "Enter your current password and a new password of at least 6 characters.", Toast.LENGTH_LONG).show()
+                                return@Button
+                            }
+                            if (newPassword != confirmPassword) {
+                                Toast.makeText(context, "The new password and confirmation do not match.", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                        }
+
+                        isSaving = true
+                        scope.launch {
+                            try {
+                                if (passwordChangeRequested) {
+                                    val user = auth.currentUser ?: error("Please sign in again before changing your password.")
+                                    val email = user.email ?: error("This account does not have a password sign-in.")
+                                    user.reauthenticate(EmailAuthProvider.getCredential(email, currentPassword)).await()
+                                    user.updatePassword(newPassword).await()
+                                }
+
+                                val updatedProfile = currentUser.copy(name = cleanName)
+                                val nameUpdate = mapOf("name" to cleanName)
+                                db.collection("users").document(currentUser.uid)
+                                    .set(nameUpdate, SetOptions.merge()).await()
+                                val memberDirectorySynced = currentUser.householdId?.takeIf { it.isNotBlank() }?.let { householdId ->
+                                    runCatching {
+                                        db.collection("households").document(householdId)
+                                            .collection("members").document(currentUser.uid)
+                                            .set(nameUpdate, SetOptions.merge()).await()
+                                    }.isSuccess
+                                } ?: true
+
+                                runCatching {
+                                    auth.currentUser?.updateProfile(
+                                        UserProfileChangeRequest.Builder().setDisplayName(cleanName).build()
+                                    )?.await()
+                                }
+                                onSaveChanges(updatedProfile)
+                                Toast.makeText(
+                                    context,
+                                    when {
+                                        !memberDirectorySynced -> "Profile saved; household member list couldn't be updated."
+                                        passwordChangeRequested -> "Profile and password updated."
+                                        else -> "Profile updated."
+                                    },
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } catch (error: Exception) {
+                                Toast.makeText(context, "Couldn't update profile: ${error.localizedMessage ?: "try again"}", Toast.LENGTH_LONG).show()
+                            } finally {
+                                isSaving = false
+                            }
                         }
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                    contentPadding = PaddingValues()
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    enabled = !isSaving,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primaryAccent,
+                        contentColor = if (colors.primaryAccent.luminance() > 0.2f) Color(0xFF172033) else Color.White
+                    )
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF2563EB), Color(0xFF38BDF8))
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "SAVE CHANGES",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
+                    if (isSaving) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Save changes", fontWeight = FontWeight.SemiBold)
                     }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Discard Changes Link
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { onBack() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Discard changes",
-                        color = Color(0xFF64748B),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth(), enabled = !isSaving) {
+                    Text("Cancel", color = colors.textSecondary)
                 }
             }
         }
     }
 }
 
-// Helper Meta Card
+@Composable
+private fun ProfileSectionHeading(text: String, color: Color) {
+    Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.7.sp)
+}
 
 @Composable
-private fun ProfileMetaCard(
-    label: String,
-    value: String,
-    trailingIcon: String
-) {
+private fun ProfileSectionCard(colors: com.example.pantry.ui.theme.AppThemeColors, content: @Composable ColumnScope.() -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.Transparent,
-        border = BorderStroke(1.dp, Color(0xFF334155).copy(alpha = 0.40f))
+        shape = RoundedCornerShape(20.dp),
+        color = colors.cardSurface,
+        border = BorderStroke(1.dp, colors.cardBorder)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF1E293B).copy(alpha = 0.80f), Color(0xFF0F172A).copy(alpha = 0.90f))
-                    )
-                )
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = label,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF64748B),
-                    letterSpacing = 0.6.sp
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = value,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFCBD5E1)
-                )
-            }
-
-            Text(text = trailingIcon, fontSize = 14.sp)
-        }
+        Column(Modifier.fillMaxWidth().padding(16.dp), content = content)
     }
 }
+
+@Composable
+private fun ProfileReadOnlyRow(label: String, value: String, colors: com.example.pantry.ui.theme.AppThemeColors) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(label, color = colors.textSecondary, fontSize = 12.sp)
+        Text(value, color = colors.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun ProfilePasswordField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    colors: com.example.pantry.ui.theme.AppThemeColors
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        label = { Text(label) },
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        shape = RoundedCornerShape(14.dp),
+        colors = profileTextFieldColors(colors)
+    )
+}
+
+@Composable
+private fun profileTextFieldColors(colors: com.example.pantry.ui.theme.AppThemeColors) = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = colors.textPrimary,
+    unfocusedTextColor = colors.textPrimary,
+    focusedContainerColor = colors.background,
+    unfocusedContainerColor = colors.background,
+    focusedBorderColor = colors.primaryAccent,
+    unfocusedBorderColor = colors.cardBorder,
+    focusedLabelColor = colors.primaryAccent,
+    unfocusedLabelColor = colors.textSecondary,
+    cursorColor = colors.primaryAccent
+)

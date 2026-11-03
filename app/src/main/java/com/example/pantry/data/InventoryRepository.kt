@@ -33,7 +33,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.Calendar
 import java.util.Date
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -130,7 +129,7 @@ object RealtimeSyncBridge {
                                         }
                                     }
                                     "PAYCHECK_SYNC" -> {
-                                        val amount = payload.optDouble("paycheckTotal", 1250.0)
+                                        val amount = payload.optDouble("paycheckTotal", 0.0)
                                         withContext(Dispatchers.Main) {
                                             onPaycheckSync(amount)
                                         }
@@ -439,119 +438,28 @@ class InventoryRepository {
     private val ticketsMap = ConcurrentHashMap<String, MutableStateFlow<List<SupportTicket>>>()
     private val messagesMap = ConcurrentHashMap<String, MutableStateFlow<List<TicketMessage>>>()
 
-    private fun defaultItemsList(): List<HouseholdItem> {
-        return listOf(
-            HouseholdItem(id = "1", name = "Whole Milk", currentQuantity = 1, alertThreshold = 2, status = "LOW"),
-            HouseholdItem(id = "2", name = "Free Range Eggs", currentQuantity = 12, alertThreshold = 4, status = "STOCKED"),
-            HouseholdItem(id = "3", name = "Sourdough Bread", currentQuantity = 0, alertThreshold = 1, status = "EMPTY"),
-            HouseholdItem(id = "4", name = "Organic Avocados", currentQuantity = 5, alertThreshold = 2, status = "STOCKED"),
-            HouseholdItem(id = "5", name = "Greek Yogurt", currentQuantity = 2, alertThreshold = 3, status = "LOW"),
-            HouseholdItem(id = "6", name = "Oat Milk", currentQuantity = 4, alertThreshold = 1, status = "STOCKED")
-        )
-    }
+    private fun getItemsFlowFor(householdId: String): MutableStateFlow<List<HouseholdItem>> =
+        itemsMap.getOrPut(householdId) { MutableStateFlow(emptyList()) }
 
-    private fun defaultBillsList(): List<BillItem> {
-        return listOf(
-            BillItem(id = "b1", name = "Electric Bill", amount = 135.0, isPaid = false, dueDate = "This Wed", dueInCurrentCycle = true),
-            BillItem(id = "b2", name = "Cell Phone Plan", amount = 75.0, isPaid = false, dueDate = "This Fri", dueInCurrentCycle = true),
-            BillItem(id = "b3", name = "Car Insurance", amount = 160.0, isPaid = true, dueDate = "Paid", dueInCurrentCycle = true),
-            BillItem(id = "b4", name = "Credit Card Min", amount = 95.0, isPaid = false, dueDate = "Next Cycle", dueInCurrentCycle = false)
-        )
-    }
+    private fun getBillsFlowFor(householdId: String): MutableStateFlow<List<BillItem>> =
+        billsMap.getOrPut(householdId) { MutableStateFlow(emptyList()) }
 
-    private fun defaultFeedbackList(): List<FeedbackItem> {
-        return listOf(
-            FeedbackItem(
-                id = "f1",
-                authorRole = "Member",
-                type = "FEATURE",
-                title = "Add Barcode Auto-Scan for Receipts",
-                description = "It would be super helpful if we could scan grocery receipts to auto-add items to the pantry!",
-                status = "IN_REVIEW",
-                timestampText = "Yesterday"
-            )
-        )
-    }
+    private fun getPaycheckFlowFor(householdId: String): MutableStateFlow<Double> =
+        paycheckMap.getOrPut(householdId) { MutableStateFlow(0.0) }
 
-    private fun defaultTicketsList(): List<SupportTicket> {
-        return listOf(
-            SupportTicket(
-                id = "t1",
-                authorId = "user_member_1",
-                authorRole = "Member",
-                type = "BUG",
-                title = "Quantity counter skipped from 2 to 0",
-                description = "When tapping decrease button fast, it skipped quantity 1.",
-                status = "CONNECTED",
-                createdAt = Date(System.currentTimeMillis() - 3600000)
-            )
-        )
-    }
+    private fun getFeedbackFlowFor(householdId: String): MutableStateFlow<List<FeedbackItem>> =
+        feedbackMap.getOrPut(householdId) { MutableStateFlow(emptyList()) }
 
-    private fun defaultMessagesList(ticketId: String): List<TicketMessage> {
-        return listOf(
-            TicketMessage(
-                id = "m1",
-                senderId = "user_member_1",
-                senderRole = "Member",
-                text = "When tapping decrease button fast, it skipped quantity 1.",
-                timestamp = Date(System.currentTimeMillis() - 3600000)
-            ),
-            TicketMessage(
-                id = "m2",
-                senderId = "user_owner_1",
-                senderRole = "Owner",
-                text = "Thanks for reporting! I connected to this ticket and fixed the race condition.",
-                timestamp = Date(System.currentTimeMillis() - 1800000)
-            )
-        )
-    }
-
-    private fun getItemsFlowFor(householdId: String): MutableStateFlow<List<HouseholdItem>> {
-        val id = householdId.ifEmpty { "default_household" }
-        return itemsMap.getOrPut(id) {
-            MutableStateFlow(defaultItemsList())
-        }
-    }
-
-    private fun getBillsFlowFor(householdId: String): MutableStateFlow<List<BillItem>> {
-        val id = householdId.ifEmpty { "default_household" }
-        return billsMap.getOrPut(id) {
-            MutableStateFlow(defaultBillsList())
-        }
-    }
-
-    private fun getPaycheckFlowFor(householdId: String): MutableStateFlow<Double> {
-        val id = householdId.ifEmpty { "default_household" }
-        return paycheckMap.getOrPut(id) {
-            MutableStateFlow(1250.0)
-        }
-    }
-
-    private fun getFeedbackFlowFor(householdId: String): MutableStateFlow<List<FeedbackItem>> {
-        val id = householdId.ifEmpty { "default_household" }
-        return feedbackMap.getOrPut(id) {
-            MutableStateFlow(defaultFeedbackList())
-        }
-    }
-
-    private fun getTicketsFlowFor(householdId: String): MutableStateFlow<List<SupportTicket>> {
-        val id = householdId.ifEmpty { "default_household" }
-        return ticketsMap.getOrPut(id) {
-            MutableStateFlow(defaultTicketsList())
-        }
-    }
+    private fun getTicketsFlowFor(householdId: String): MutableStateFlow<List<SupportTicket>> =
+        ticketsMap.getOrPut(householdId) { MutableStateFlow(emptyList()) }
 
     private fun getMessagesFlowFor(householdId: String, ticketId: String): MutableStateFlow<List<TicketMessage>> {
-        val key = "${householdId.ifEmpty { "default_household" }}_$ticketId"
-        return messagesMap.getOrPut(key) {
-            MutableStateFlow(defaultMessagesList(ticketId))
-        }
+        return messagesMap.getOrPut("${householdId}_$ticketId") { MutableStateFlow(emptyList()) }
     }
 
     fun getSavedHouseholdId(): String? {
         val id = prefs?.getString("householdId", null) ?: prefs?.getString("household_id", null)
-        return if (id == "default_household" || id.isNullOrEmpty()) "default_household" else id
+        return id?.takeIf { it.isNotBlank() && it != "default_household" }
     }
 
     fun getSavedIsOwner(): Boolean {
@@ -603,55 +511,21 @@ class InventoryRepository {
             memberIds = listOf(userId)
         )
 
+        val database = db ?: throw IllegalStateException("Household service is unavailable")
+        database.collection("households")
+            .document(householdId)
+            .set(household, SetOptions.merge())
+            .await()
+
         inviteCodeToHouseholdMap[inviteCode] = household
         saveHouseholdState(householdId, isOwner = true)
+        getItemsFlowFor(householdId).value = emptyList()
+        getBillsFlowFor(householdId).value = emptyList()
+        getPaycheckFlowFor(householdId).value = 0.0
+        getFeedbackFlowFor(householdId).value = emptyList()
+        getTicketsFlowFor(householdId).value = emptyList()
 
-        val initialItems = defaultItemsList()
-        val initialBills = defaultBillsList()
-        val initialFeedback = defaultFeedbackList()
-        val initialTickets = defaultTicketsList()
-        getItemsFlowFor(householdId).value = initialItems
-        getBillsFlowFor(householdId).value = initialBills
-        getPaycheckFlowFor(householdId).value = 1250.0
-        getFeedbackFlowFor(householdId).value = initialFeedback
-        getTicketsFlowFor(householdId).value = initialTickets
-
-        // Start listening to real-time HTTP SSE bridge
         ensureRealtimeSyncListening(householdId)
-
-        // Broadcast initial state
-        RealtimeSyncBridge.publishInventory(householdId, initialItems)
-        RealtimeSyncBridge.publishBills(householdId, initialBills)
-        RealtimeSyncBridge.publishPaycheck(householdId, 1250.0)
-        RealtimeSyncBridge.publishFeedback(householdId, initialFeedback)
-        RealtimeSyncBridge.publishTickets(householdId, initialTickets)
-
-        val database = db
-        if (database != null) {
-            try {
-                database.collection("households")
-                    .document(householdId)
-                    .set(household, SetOptions.merge())
-
-                initialItems.forEach { item ->
-                    database.collection("households")
-                        .document(householdId)
-                        .collection("inventory")
-                        .document(item.id)
-                        .set(item, SetOptions.merge())
-                }
-
-                initialBills.forEach { bill ->
-                    database.collection("households")
-                        .document(householdId)
-                        .collection("bills")
-                        .document(bill.id)
-                        .set(bill, SetOptions.merge())
-                }
-            } catch (e: Exception) {
-                Log.e("InventoryRepo", "Error seeding remote household $householdId: ${e.message}", e)
-            }
-        }
         return household
     }
 
@@ -660,48 +534,33 @@ class InventoryRepository {
         if (cleanCode.length != 6) {
             return Result.failure(Exception("Invite code must be 6 characters"))
         }
-
+        val database = db ?: return Result.failure(Exception("Household service is unavailable"))
         val householdId = "HH_$cleanCode"
+        return try {
+            val docRef = database.collection("households").document(householdId)
+            val snapshot = docRef.get().await()
+            if (!snapshot.exists()) return Result.failure(Exception("Household not found"))
 
-        val household = Household(
-            id = householdId,
-            ownerId = "remote_owner",
-            inviteCode = cleanCode,
-            memberIds = listOf("remote_owner", userId)
-        )
-        inviteCodeToHouseholdMap[cleanCode] = household
-        saveHouseholdState(householdId, isOwner = false)
+            val ownerId = snapshot.getString("ownerId").orEmpty()
+            val memberIds = (snapshot.get("memberIds") as? List<*>)
+                ?.mapNotNull { it as? String }
+                .orEmpty()
+            docRef.update("memberIds", FieldValue.arrayUnion(userId)).await()
 
-        ensureRealtimeSyncListening(householdId)
-
-        val database = db
-        if (database != null) {
-            try {
-                val docRef = database.collection("households").document(householdId)
-                val snapshot = docRef.get().await()
-
-                if (snapshot.exists()) {
-                    val ownerId = snapshot.getString("ownerId") ?: ""
-                    val isOwner = ownerId == userId
-
-                    docRef.update("memberIds", FieldValue.arrayUnion(userId))
-
-                    val remoteHousehold = Household(
-                        id = householdId,
-                        ownerId = ownerId,
-                        inviteCode = cleanCode,
-                        memberIds = (snapshot.get("memberIds") as? List<*>)?.mapNotNull { it as? String } ?: listOf(userId)
-                    )
-
-                    saveHouseholdState(householdId, isOwner = isOwner)
-                    return Result.success(remoteHousehold)
-                }
-            } catch (e: Exception) {
-                Log.e("InventoryRepo", "Error joining remote household $householdId: ${e.message}", e)
-            }
+            val household = Household(
+                id = householdId,
+                ownerId = ownerId,
+                inviteCode = cleanCode,
+                memberIds = (memberIds + userId).distinct()
+            )
+            inviteCodeToHouseholdMap[cleanCode] = household
+            saveHouseholdState(householdId, isOwner = ownerId == userId)
+            ensureRealtimeSyncListening(householdId)
+            Result.success(household)
+        } catch (error: Exception) {
+            Log.e("InventoryRepo", "Error joining household $householdId: ${error.message}", error)
+            Result.failure(error)
         }
-
-        return Result.success(household)
     }
 
     private fun ensureRealtimeSyncListening(householdId: String) {
@@ -730,25 +589,6 @@ class InventoryRepository {
         )
     }
 
-    private fun calculateNextWed830PMPayday(): Pair<String, Int> {
-        val now = Calendar.getInstance()
-        val today = now.get(Calendar.DAY_OF_WEEK) // Wed = 4
-        var daysUntilWed = (Calendar.WEDNESDAY - today + 7) % 7
-        if (daysUntilWed == 0) {
-            val hour = now.get(Calendar.HOUR_OF_DAY)
-            val min = now.get(Calendar.MINUTE)
-            if (hour > 20 || (hour == 20 && min >= 30)) {
-                daysUntilWed = 14
-            }
-        }
-        val days = if (daysUntilWed == 0) 14 else daysUntilWed
-        val text = when (days) {
-            14 -> "Arrives Tonight at 8:30 PM!"
-            1 -> "Tomorrow 8:30 PM"
-            else -> "Wed 8:30 PM ($days days)"
-        }
-        return Pair(text, days)
-    }
 
     fun getInventoryFlow(householdId: String): Flow<List<HouseholdItem>> = callbackFlow {
         if (householdId.isEmpty()) {
@@ -784,10 +624,8 @@ class InventoryRepository {
                                 null
                             }
                         }
-                        if (remoteItems.isNotEmpty()) {
-                            targetFlow.value = remoteItems
-                            trySend(remoteItems)
-                        }
+                        targetFlow.value = remoteItems
+                        trySend(remoteItems)
                     }
                 }
         } else null
@@ -832,10 +670,8 @@ class InventoryRepository {
                                 null
                             }
                         }
-                        if (remoteBills.isNotEmpty()) {
-                            targetFlow.value = remoteBills
-                            trySend(remoteBills)
-                        }
+                        targetFlow.value = remoteBills
+                        trySend(remoteBills)
                     }
                 }
         } else null
@@ -855,7 +691,6 @@ class InventoryRepository {
 
         ensureRealtimeSyncListening(householdId)
 
-        val (paydayText, daysRemaining) = calculateNextWed830PMPayday()
         val billsTargetFlow = getBillsFlowFor(householdId)
         val paycheckTargetFlow = getPaycheckFlowFor(householdId)
 
@@ -866,8 +701,6 @@ class InventoryRepository {
                     BudgetLedger(
                         paycheckTotal = paycheckTargetFlow.value,
                         pendingBillsTotal = pendingTotal,
-                        nextPaydayText = paydayText,
-                        daysUntilPayday = daysRemaining
                     )
                 )
             }
@@ -928,10 +761,8 @@ class InventoryRepository {
                                 null
                             }
                         }
-                        if (remoteFeedback.isNotEmpty()) {
-                            targetFlow.value = remoteFeedback
-                            trySend(remoteFeedback)
-                        }
+                        targetFlow.value = remoteFeedback
+                        trySend(remoteFeedback)
                     }
                 }
         } else null
@@ -976,10 +807,8 @@ class InventoryRepository {
                                 null
                             }
                         }
-                        if (remoteTickets.isNotEmpty()) {
-                            targetFlow.value = remoteTickets
-                            trySend(remoteTickets)
-                        }
+                        targetFlow.value = remoteTickets
+                        trySend(remoteTickets)
                     }
                 }
         } else null
@@ -1026,10 +855,8 @@ class InventoryRepository {
                                 null
                             }
                         }
-                        if (remoteMessages.isNotEmpty()) {
-                            targetFlow.value = remoteMessages
-                            trySend(remoteMessages)
-                        }
+                        targetFlow.value = remoteMessages
+                        trySend(remoteMessages)
                     }
                 }
         } else null
@@ -1295,7 +1122,7 @@ class InventoryRepository {
 
         RealtimeSyncBridge.publishTickets(householdId, updatedTickets)
 
-        // Seed initial description as m1 message
+        // Store the ticket description as its first conversation message
         if (finalTicket.description.isNotBlank()) {
             val initialMsg = TicketMessage(
                 id = UUID.randomUUID().toString(),

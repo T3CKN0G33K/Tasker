@@ -13,14 +13,11 @@ data class PayCycleInfo(
 )
 
 object PayCycleUtils {
-    // Verified Anchor Payday: Friday, October 9, 2026 (for period Monday Sep 21 to Sunday Oct 4)
-    private val ANCHOR_PAYDAY: LocalDate = LocalDate.of(2026, 10, 9)
-
-    fun getCurrentPayCycle(nowDate: LocalDate = LocalDate.now()): PayCycleInfo {
-        val daysUntilPayday = ChronoUnit.DAYS.between(nowDate, ANCHOR_PAYDAY)
+    fun getCurrentPayCycle(nowDate: LocalDate, anchorPayday: LocalDate): PayCycleInfo {
+        val daysUntilPayday = ChronoUnit.DAYS.between(nowDate, anchorPayday)
         val cycleOffset = Math.floorDiv(daysUntilPayday, 14L)
 
-        val targetPayday = ANCHOR_PAYDAY.minusDays(cycleOffset * 14L)
+        val targetPayday = anchorPayday.minusDays(cycleOffset * 14L)
         val periodEnd = targetPayday.minusDays(5L)  // Sunday (5 days before payday Friday)
         val periodStart = periodEnd.minusDays(13L)  // Monday (14 days total)
 
@@ -43,5 +40,6 @@ object PayCycleUtils {
         )
     }
 
-    fun getPayCycleForDate(date: LocalDate): PayCycleInfo = getCurrentPayCycle(date)
+    fun getPayCycleForDate(date: LocalDate, anchorPayday: LocalDate): PayCycleInfo =
+        getCurrentPayCycle(date, anchorPayday)
 }

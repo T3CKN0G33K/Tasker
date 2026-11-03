@@ -35,16 +35,21 @@ data class BillItem(
     var amount: Double = 0.0,
     @get:PropertyName("isPaid") @set:PropertyName("isPaid") var isPaid: Boolean = false,
     var dueDate: String = "",
-    @get:PropertyName("dueInCurrentCycle") @set:PropertyName("dueInCurrentCycle") var dueInCurrentCycle: Boolean = true
+    @get:PropertyName("dueInCurrentCycle") @set:PropertyName("dueInCurrentCycle") var dueInCurrentCycle: Boolean = true,
+    var repeatsMonthly: Boolean = true,
+    var paidDate: String? = null,
+    var paidAmount: Double? = null,
+    var paidByUid: String? = null,
+    var paidByName: String? = null
 )
 
 @IgnoreExtraProperties
 data class BudgetLedger(
-    var paycheckTotal: Double = 1250.0,
+    var paycheckTotal: Double = 0.0,
     var pendingBillsTotal: Double = 0.0,
-    var payCadence: String = "Bi-Weekly (Home Depot)",
-    var nextPaydayText: String = "Wed 8:30 PM",
-    var daysUntilPayday: Int = 4
+    var payCadence: String = "",
+    var nextPaydayText: String = "",
+    var daysUntilPayday: Int = 0
 ) {
     val safeToSpend: Double
         get() = paycheckTotal - pendingBillsTotal
@@ -97,8 +102,8 @@ data class BoardNote(
 
 @IgnoreExtraProperties
 data class BudgetCycleData(
-    var cycleId: String = "2026-10",
-    var allowance: Double = 1250.00,
+    var cycleId: String = "",
+    var allowance: Double = 0.0,
     var bills: List<BillItem> = emptyList()
 )
 

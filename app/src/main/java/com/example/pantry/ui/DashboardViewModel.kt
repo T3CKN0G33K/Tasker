@@ -88,9 +88,6 @@ class DashboardViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _isAdminUnlocked = MutableStateFlow(false)
-    val isAdminUnlocked: StateFlow<Boolean> = _isAdminUnlocked.asStateFlow()
-
     private val _remoteLiquidGlass = MutableStateFlow(false)
     val remoteLiquidGlass: StateFlow<Boolean> = _remoteLiquidGlass.asStateFlow()
 
@@ -102,14 +99,6 @@ class DashboardViewModel(
     val useLiquidGlass: StateFlow<Boolean> = combine(_remoteLiquidGlass, _localThemeOverride) { remote, local ->
         if (local == "DEFAULT") remote else local == "LIQUID_GLASS"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
-
-    fun verifyAdminPin(pin: String): Boolean {
-        if (pin == "0000") { // Hardcoded default for now
-            _isAdminUnlocked.value = true
-            return true
-        }
-        return false
-    }
 
     fun setThemePreference(preference: String) {
         prefs?.edit()?.putString("theme_preference", preference)?.apply()
@@ -251,26 +240,14 @@ class DashboardViewModel(
     val budgetLedger: StateFlow<BudgetLedger> = _householdId
         .flatMapLatest { id ->
             if (id.isNullOrEmpty()) flowOf(
-                BudgetLedger(
-                    paycheckTotal = 1250.0,
-                    pendingBillsTotal = 0.0,
-                    payCadence = "Bi-Weekly (Home Depot)",
-                    nextPaydayText = "Wed 8:30 PM",
-                    daysUntilPayday = 4
-                )
+                BudgetLedger()
             )
             else repository.getLedgerFlow(id)
         }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = BudgetLedger(
-                paycheckTotal = 1250.0,
-                pendingBillsTotal = 0.0,
-                payCadence = "Bi-Weekly (Home Depot)",
-                nextPaydayText = "Wed 8:30 PM",
-                daysUntilPayday = 4
-            )
+            initialValue = BudgetLedger()
         )
 
     val feedbackItems: StateFlow<List<FeedbackItem>> = _householdId
